@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Theater Designer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Home Theater Designer</h1>
+
+    <div class="main-container"> 
+        <div class="canvas-container">
+            <canvas id="room-canvas"></canvas>
+        </div>
+
+        <div class="controls-container"> 
+            <div class="controls">
+                <div class="controls-room">
+                    <h2>Room Dimensions (m)</h2>
+                    <div class="control-pair">
+                        <label for="room-width">Width:</label>
+                        <input type="number" id="room-width" value="4" step="0.1" min="1"> <!-- Default: 4 -->
+                    </div>
+                    <div class="control-pair">
+                        <label for="room-depth">Depth:</label>
+                        <input type="number" id="room-depth" value="4" step="0.1" min="1"> <!-- Default: 4 -->
+                    </div>
+                    <div class="control-pair">
+                        <label for="room-height">Height:</label>
+                        <input type="number" id="room-height" value="2.8" step="0.1" min="1"> <!-- Default: 2.8 -->
+                    </div>
+                    <hr>
+                    <div class="control-pair">
+                        <label for="listener-x">Listener X:</label>
+                        <input type="number" id="listener-x" value="2.5" step="0.1">
+                    </div>
+                    <div class="control-pair">
+                        <label for="listener-y">Listener Y:</label>
+                        <input type="number" id="listener-y" value="5" step="0.1">
+                    </div>
+                    <div class="listener-info">
+                        <p>Dist to front: <span id="dist-front">?.?</span>m | Dist to back: <span id="dist-back">?.?</span>m</p>
+                    </div>
+                    <hr>
+                    <div class="control-pair hidden-control">
+                        <label for="tv-x">TV Center X:</label>
+                        <input type="number" id="tv-x" value="2.5" step="0.1" disabled class="hidden-control">
+                    </div>
+                    <div class="control-pair hidden-control">
+                        <label for="tv-y">TV Y (Wall):</label>
+                        <input type="number" id="tv-y" value="0" step="0.1" disabled class="hidden-control">
+                    </div>
+                    <div class="control-pair">
+                        <label for="tv-size">TV Width:</label>
+                        <input type="number" id="tv-size" value="1.5" min="0.1" step="0.1">
+                    </div>
+                </div>
+
+                <div class="controls-speakers">
+                    <h2>Speakers</h2>
+                    <button id="add-speaker-btn">Add Bed Level Speaker</button>
+                    <button id="add-ceiling-speaker-btn">Add Ceiling Speaker</button> 
+                    <button id="clear-speakers-btn">Clear Speakers</button>
+                    <ul id="speaker-list"></ul>
+                </div>
+
+                <div class="controls-io">
+                    <h2>Save / Load</h2>
+                    <button id="save-design-btn">Save Design</button>
+                    <button id="load-design-btn">Load Design</button>
+                    <input type="file" id="load-file-input" accept=".json" style="display: none;"> 
+                </div>
+            </div> 
+        </div> 
+    </div> 
+
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column; /* Stack header and main */
+    min-height: 100vh;
+    font-size: 13px; /* Smaller base font size */
+}
+
+h1 {
+    text-align: center;
+    background-color: #f4f4f4;
+    padding: 8px; /* Reduced padding */
+    margin: 0;
+    font-size: 1.5em; /* Reduced size */
+}
+
+.main-container {
+    display: flex;
+    flex-grow: 1; /* Allow main container to fill height */
+    padding: 8px; /* Reduced padding */
+}
+
+.canvas-container {
+    /* flex-grow: 1; */ /* Previous */
+    flex-basis: 80%; /* More space for canvas */
+    flex-grow: 1; /* Allow canvas to grow */
+    margin-right: 8px; /* Reduced margin */
+    border: 1px solid #ccc;
+    position: relative; /* For potential absolute positioning inside */
+    display: flex; /* To center canvas */
+    justify-content: center;
+    align-items: center;
+    background-color: #fff;
+    max-height: calc(100vh - 70px); /* Adjust based on smaller header */
+}
+
+.controls-container {
+    /* flex-grow: 1; */ /* Previous */
+    flex-basis: 20%; /* Less space for controls */
+    flex-shrink: 0; /* Prevent controls from shrinking too much */
+    display: flex;
+    flex-direction: column;
+    gap: 8px; /* Reduced gap */
+}
+
+/* Increase font size in controls */
+.controls-room h2, .controls-speakers h2, .controls-io h2 {
+    margin-top: 0;
+    font-size: 1.0em; /* Reduced size */
+    margin-bottom: 6px; /* Reduced margin */
+}
+
+.controls-room, .controls-speakers, .controls-io {
+    background-color: #e8e8e8;
+    padding: 10px; /* Reduced padding */
+    border-radius: 5px; /* Smaller radius */
+    width: auto;
+}
+
+/* Styles for control pairs */
+.control-pair {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px; /* Reduced margin */
+    min-height: 24px; /* Reduced height */
+}
+
+.controls-room label { /* Adjusted for flex layout */
+    /* display: inline-block; */ /* No longer needed */
+    margin: 0 5px 0 0; /* Reduced margin */
+    width: auto; /* Allow label to size naturally */
+    /* max-width: 120px; */ /* Optional: Limit label width if needed */
+    flex-shrink: 0; /* Prevent label from shrinking */
+    text-align: right;
+    font-size: 0.9em; /* Smaller font */
+}
+
+.controls-room input[type="number"] {
+    width: 60px; /* Reduced width */
+    padding: 3px; /* Reduced padding */
+    margin-bottom: 0; /* Remove bottom margin as .control-pair handles spacing */
+    flex-grow: 0; /* Prevent input from growing */
+    flex-shrink: 0; /* Prevent input from shrinking */
+    font-size: 0.9em; /* Smaller font */
+    border: 1px solid #ccc;
+    border-radius: 2px; /* Smaller radius */
+}
+
+.controls-room hr { /* Style separators */
+    border: none;
+    border-top: 1px solid #ccc;
+    margin: 8px 0; /* Reduced margin */
+}
+
+.controls-speakers button, .controls-io button {
+    padding: 5px 10px; /* Reduced padding */
+    margin-bottom: 6px; /* Reduced margin */
+    margin-right: 3px; /* Reduced margin */
+    cursor: pointer;
+    border: none;
+    border-radius: 3px; /* Smaller radius */
+    background-color: #007bff;
+    color: white;
+    font-size: 0.85em; /* Smaller font */
+    transition: background-color 0.3s ease;
+}
+
+.controls-speakers button:hover, .controls-io button:hover {
+    background-color: #0056b3;
+}
+
+#speaker-list {
+    list-style: none;
+    padding: 0;
+    margin-top: 8px; /* Reduced margin */
+    max-height: 120px; /* Limit height further */
+    overflow-y: auto; /* Add scroll if needed */
+    font-size: 0.85em; /* Smaller font */
+}
+
+#speaker-list li {
+    background-color: #f9f9f9;
+    margin-bottom: 4px; /* Reduced margin */
+    padding: 4px 6px; /* Reduced padding */
+    border-radius: 3px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#speaker-list li span { /* Target the text span if you add one */
+    flex-grow: 1;
+    margin-right: 5px;
+}
+
+#speaker-list li button {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 2px 4px; /* Smaller padding */
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.75em; /* Smaller font */
+}
+
+#speaker-list li button:hover {
+    background-color: #c82333;
+}
+
+.hidden-control {
+    display: none !important; /* Keep TV X/Y controls hidden */
+}
+
+.listener-info {
+    font-size: 0.9em;
+    color: #555;
+    margin-top: -5px; /* Adjust spacing */
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.listener-info span {
+    font-weight: bold;
+    color: #333;
+}
+
+.controls button {
+    display: block;
+    width: 100%;
+    padding: 5px 10px;
+    margin-bottom: 10px;
+}
