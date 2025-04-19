@@ -173,3 +173,99 @@ h1 {
     padding: 5px 10px;
     margin-bottom: 10px;
 }
+
+/* --- Toolbar Styling --- */
+#toolbar {
+    padding: 5px 10px; /* Padding around the toolbar */
+    margin-bottom: 10px; /* Space below toolbar */
+    border-bottom: 1px solid #ccc; /* Separator line */
+    background-color: #f8f8f8; /* Light background for toolbar */
+}
+
+#toolbar .button-group {
+    margin-bottom: 0; /* Remove margin when inside toolbar */
+}
+
+/* --- Button Group Styling --- */
+.button-group {
+    display: flex;
+    gap: 5px; /* Space between buttons */
+    align-items: center; /* Align items vertically */
+    margin-bottom: 15px; /* Add some space below the group */
+}
+
+/* General styling for buttons within the group */
+.button-group button {
+    padding: 8px 12px; /* Default padding for text buttons */
+    cursor: pointer;
+    border: 1px solid #ccc;
+    background-color: #f0f0f0;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1.2; /* Ensure text buttons align well */
+}
+
+/* Specific style for the square icon buttons IN THE TOOLBAR */
+#toolbar #measure-btn,
+#toolbar #save-design-btn,
+#toolbar #load-design-btn,
+#toolbar #add-speaker-btn,
+#toolbar #add-ceiling-speaker-btn {
+    width: 32px; /* Square dimension */
+    height: 32px; /* Square dimension */
+    padding: 0; /* Remove padding for icon centering */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    line-height: 1; /* Reset line-height for icon buttons */
+}
+
+/* Size the SVG icons within toolbar buttons */
+#toolbar #measure-btn svg,
+#toolbar #save-design-btn svg,
+#toolbar #load-design-btn svg,
+#toolbar #add-speaker-btn svg,
+#toolbar #add-ceiling-speaker-btn svg {
+    width: 18px; /* Size of the icon */
+    height: 18px;
+    stroke: currentColor; /* Use button's text color */
+}
+
+/* Active state for the measure button */
+#measure-btn.active {
+    background-color: #4CAF50; /* Green background */
+    color: black; /* Icon color */
+    border-color: #367c39;
+}
+
+/* Hover states */
+.button-group button:hover {
+    background-color: #e0e0e0;
+}
+
+#measure-btn.active:hover {
+    background-color: #45a049;
+}
+
+.main-container {
+    display: flex;
+    flex-direction: row;
+    flex-grow: 1; /* Allow main container to fill height */
+    padding: 8px; /* Reduced padding */
+}
+
+.speaker-list button {
+    margin-left: 10px;
+}
+
+/* Style for active tool buttons */
+.active-tool {
+    background-color: #2E8B57; /* Darker Green (SeaGreen) */
+    color: white;
+    border: 1px solid #1c5837; /* Slightly darker border */
+}
+
+.measurement-info {
+    margin-top: 15px;
+    font-size: 0.9em;
+}

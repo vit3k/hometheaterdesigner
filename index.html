@@ -9,6 +9,66 @@
 <body>
     <h1>Home Theater Designer</h1>
 
+    <div id="toolbar">
+        <div class="button-group">
+            <button id="save-design-btn" title="Save Design">
+                <!-- Tabler Icon: device-floppy -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M6 4h10l4 4v10a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2" />
+                    <path d="M12 14m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
+                    <path d="M14 4l0 4l-6 0l0 -4" />
+                </svg>
+            </button>
+            <button id="load-design-btn" title="Load Design">
+                <!-- Tabler Icon: folder-open -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a1 1 0 0 1 -.986 -1.164v-10.186a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2.5" />
+                </svg>
+            </button>
+            <input type="file" id="load-file-input" accept=".json" style="display: none;">
+            <button id="measure-btn" title="Measure Distance" data-tool="measure" class="tool-button">
+                <!-- Tabler Icon: ruler-measure -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M14 3l6 6" />
+                    <path d="M12 5l6 6" />
+                    <path d="M17 8l3.5 -3.5" />
+                    <path d="M19.5 4.5l1.5 1.5" />
+                    <path d="M3 21l6 -6" />
+                    <path d="M5 19l6 -6" />
+                    <path d="M8 17l-3.5 3.5" />
+                    <path d="M4.5 19.5l-1.5 1.5" />
+                    <path d="M21 14l-6 6" />
+                    <path d="M19 12l-6 6" />
+                    <path d="M17 17l-3.5 3.5" />
+                    <path d="M19.5 21.5l-1.5 -1.5" />
+                    <path d="M3 3l18 18" />
+                </svg>
+            </button>
+            <button id="add-speaker-btn" title="Add Bed Speaker" data-tool="bed" class="tool-button">
+                <!-- Tabler Icon: volume -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M15 8a5 5 0 0 1 0 8" />
+                    <path d="M17.7 5a9 9 0 0 1 0 14" />
+                    <path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5" />
+                </svg>
+            </button>
+            <button id="add-ceiling-speaker-btn" title="Add Ceiling Speaker" data-tool="ceiling" class="tool-button">
+                 <!-- Tabler Icon: ceiling-lamp -->
+                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M9 4l6 0" />
+                    <path d="M12 4v8" />
+                    <path d="M12 20a3 3 0 0 1 -3 -3h6a3 3 0 0 1 -3 3z" />
+                    <path d="M10 14h4l-1 3h-2z" />
+                 </svg>
+            </button>
+        </div>
+    </div>
+
     <div class="main-container"> 
         <div class="canvas-container">
             <canvas id="room-canvas"></canvas>
@@ -58,18 +118,12 @@
                 </div>
 
                 <div class="controls-speakers">
-                    <h2>Speakers</h2>
-                    <button id="add-speaker-btn">Add Bed Level Speaker</button>
-                    <button id="add-ceiling-speaker-btn">Add Ceiling Speaker</button> 
-                    <button id="clear-speakers-btn">Clear Speakers</button>
+                    <button id="clear-speakers-btn">Clear All Speakers</button> 
+                    <h2>Speaker List</h2>
                     <ul id="speaker-list"></ul>
                 </div>
 
                 <div class="controls-io">
-                    <h2>Save / Load</h2>
-                    <button id="save-design-btn">Save Design</button>
-                    <button id="load-design-btn">Load Design</button>
-                    <input type="file" id="load-file-input" accept=".json" style="display: none;"> 
                 </div>
             </div> 
         </div> 

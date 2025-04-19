@@ -17,8 +17,12 @@ const speakerListUl = document.getElementById('speaker-list');
 const saveDesignBtn = document.getElementById('save-design-btn');
 const loadDesignBtn = document.getElementById('load-design-btn');
 const loadFileInput = document.getElementById('load-file-input');
+const measureBtn = document.getElementById('measure-btn');
 const distFrontSpan = document.getElementById('dist-front');
 const distBackSpan = document.getElementById('dist-back');
+
+// --- Group Tool Buttons ---
+const buttons = document.querySelectorAll('.tool-button'); // Query for all tool buttons
 
 // --- State ---
 let room = {
@@ -27,27 +31,33 @@ let room = {
     height: parseFloat(roomHeightInput.value)
 };
 let listener = {
-    x: 0, // Placeholder, will be calculated on load
-    y: 0  // Placeholder, will be calculated on load
+    x: 1.5, // Default position (meters)
+    y: 0.7  // Default position (meters)
 };
 let tv = {
-    x: 2.5, // Initial X will be overwritten by listener X in redraw
-    y: 0.1, // Fixed Y
-    width: 1.5, // Initial width
-    depth: 0.05 // Small depth for visual representation
+    x: 1.5, // Default TV position
+    y: 0,   // Default TV position
+    width: 1.6, // Default TV width
+    height: 0.9 // Default TV height
 };
-let speakers = []; // Array to hold speaker objects {x, y, z, type: 'bed' | 'ceiling'}
-let isPlacingSpeaker = false; // State for speaker placement mode
-let speakerTypeToPlace = 'bed'; // Type of speaker to place
-let isDragging = false;         // State for general element dragging mode
-let isDraggingListener = false; // State for listener dragging mode
-let draggedSpeakerIndex = -1;   // Index of the speaker being dragged
-let dragOffsetX = 0;            // Offset X for dragging (used for both)
-let dragOffsetY = 0;            // Offset Y for dragging (used for both)
+let speakers = []; // Array to hold speaker objects {x, y, type: 'bed'/'ceiling'}
+let isDraggingListener = false;
+let isDraggingSpeaker = false; // Declare globally
+let draggedSpeakerIndex = -1;  // Declare globally
+let offsetX, offsetY; // For dragging listener
+let isPlacingSpeaker = false;
+let speakerTypeToPlace = null; // 'bed' or 'ceiling'
+let isMeasuring = false;
+let measureStart = null; // { x_met, y_met } in meters
+let measureEnd = null; // { x_met, y_met } in meters
+let currentMeasureEnd = null; // { x_met, y_met } temporary endpoint during mouse move
+let isDragging = false; // General dragging flag (could be listener or future elements)
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+let scale = 1;
+let PADDING = 50; // Initial padding
 
 // --- Drawing Constants ---
-const PADDING = 30; // Padding around the drawing area in pixels
-let scale = 1; // Pixels per meter, calculated dynamically
 const LISTENER_EAR_HEIGHT = 1.2; // Assumed listener ear height in meters
 const AUTOSAVE_KEY = 'homeTheaterDesignAutosave';
 
@@ -64,12 +74,20 @@ const SNAP_THRESHOLD_POS_METERS = 0.05; // Meters within which to snap coordinat
 const ADJACENT_ANGLE_ARC_RADIUS_PX_BED = 100;    // Arc radius for bed speakers (Increased)
 const ADJACENT_ANGLE_ARC_RADIUS_PX_CEILING = 60; // Arc radius for ceiling speakers (Increased)
 const ADJACENT_ANGLE_TEXT_OFFSET_PX = 10;       // Extra offset for text from arc
-const ADJACENT_ANGLE_COLOR_BED = 'rgba(0, 128, 0, 0.35)'; // More visible green for angle arcs/labels
+const ADJACENT_ANGLE_COLOR_BED = 'rgba(0, 128, 0, 0.18)'; // More visible green for angle arcs/labels
 const ADJACENT_ANGLE_COLOR_CEILING = 'rgba(128, 128, 128, 0.35)'; // More visible gray for angle arcs/labels
 const ANGLE_TEXT_COLOR_BED = 'rgba(0, 128, 0, 0.7)'; // Stronger green for azimuth text
 const ANGLE_TEXT_COLOR_CEILING = 'rgba(128, 128, 128, 0.7)'; // Stronger gray for azimuth text
 const ADJACENT_ANGLE_FONT_SIZE_PX = 12;
 const ADJACENT_ANGLE_ARC_WIDTH = 1.5;
+
+// --- Measurement Constants ---
+const SNAP_THRESHOLD_MEASURE_PX = 15; // Pixel distance to snap measurement point
+const MEASUREMENT_LINE_COLOR = 'rgba(255, 0, 0, 0.8)';
+const MEASUREMENT_POINT_COLOR = 'red';
+const MEASUREMENT_POINT_RADIUS_PX = 5;
+const MEASUREMENT_TEXT_COLOR = 'red';
+const MEASUREMENT_FONT_SIZE_PX = 14;
 
 // --- Coordinate Conversion ---
 // Convert room coordinates (meters) to canvas coordinates (pixels)
@@ -77,16 +95,16 @@ function metersToPixelsCoords(x_met, y_met) {
     // Maps room Y=0 (front/TV wall) to pixel Y=PADDING (top edge of drawing area)
     // Maps room Y=room.depth (back wall) to pixel Y=canvas.height-PADDING (bottom edge)
     const x_px = x_met * scale + PADDING;
-    const y_px = y_met * scale + PADDING; // Room Y=0 -> Pixel Y=PADDING
+    const y_px = y_met * scale + PADDING; // FIX: Front wall (Y=0) maps to top (PADDING)
     return { x: x_px, y: y_px };
 }
 
 // Convert canvas coordinates (pixels) back to room coordinates (meters)
 function pixelsToMetersCoords(x_px, y_px) {
-    // Inverse mapping
+    if (scale === 0) return { x_met: 0, y_met: 0 }; // Avoid division by zero
     const x_met = (x_px - PADDING) / scale;
-    const y_met = (y_px - PADDING) / scale; // Pixel Y=PADDING -> Room Y=0
-    return { x: x_met, y: y_met };
+    const y_met = (y_px - PADDING) / scale; // FIX: Inverse of the above
+    return { x_met, y_met }; // FIX: Use correct property names
 }
 
 // --- Helper Functions ---
@@ -103,6 +121,30 @@ function angleDifference(angle1Deg, angle2Deg) {
     while (diff <= -180) diff += 360;
     while (diff > 180) diff -= 360;
     return Math.abs(diff);
+}
+
+// --- Measurement Snap Function ---
+function getSnappedMeasurementPoint(x_px, y_px) {
+    // Check snap to listener
+    const listenerPosPx = metersToPixelsCoords(listener.x, listener.y);
+    const distToListenerPx = Math.sqrt((x_px - listenerPosPx.x)**2 + (y_px - listenerPosPx.y)**2);
+    if (distToListenerPx < SNAP_THRESHOLD_MEASURE_PX) {
+        return { meters: { x_met: listener.x, y_met: listener.y }, pixels: listenerPosPx }; // FIX: Return consistent structure
+    }
+
+    // Check snap to speakers
+    for (const speaker of speakers) {
+        const speakerPosPx = metersToPixelsCoords(speaker.x, speaker.y);
+        const distToSpeakerPx = Math.sqrt((x_px - speakerPosPx.x)**2 + (y_px - speakerPosPx.y)**2);
+        if (distToSpeakerPx < SNAP_THRESHOLD_MEASURE_PX) {
+            return { meters: { x_met: speaker.x, y_met: speaker.y }, pixels: speakerPosPx }; // FIX: Return consistent structure
+        }
+    }
+
+    // No snap, return original click converted to meters
+    const snappedMeters = pixelsToMetersCoords(x_px, y_px);
+    const snappedPixels = { x: x_px, y: y_px };
+    return { meters: snappedMeters, pixels: snappedPixels };
 }
 
 // --- Functions ---
@@ -208,10 +250,17 @@ function drawSpeakers() {
         const speakerPos = metersToPixelsCoords(speaker.x, speaker.y);
         const baseColor = speaker.type === 'ceiling' ? 'grey' : 'green';
 
-        // --- Visual Feedback for Snap ---
-        const fillColor = speaker.isSnapped ? 'yellow' : baseColor; // Highlight when snapped
-        const strokeColor = speaker.isSnapped ? 'red' : 'black';
-        const lineWidth = speaker.isSnapped ? 2 : 1;
+        // --- Visual Feedback for Snap (ONLY during drag) ---
+        let fillColor = baseColor;
+        let strokeColor = 'black';
+        let lineWidth = 1;
+
+        // Apply snapped style only if THIS speaker is being dragged AND it's currently snapped
+        if (isDraggingSpeaker && index === draggedSpeakerIndex && speaker.isSnapped) {
+            fillColor = 'yellow'; // Highlight fill when snapped during drag
+            strokeColor = 'red';   // Highlight stroke
+            lineWidth = 2;         // Thicker stroke
+        }
 
         ctx.beginPath();
         ctx.arc(speakerPos.x, speakerPos.y, SPEAKER_RADIUS_PX, 0, Math.PI * 2);
@@ -305,71 +354,6 @@ function drawAngles() {
         // Optional: Store angles if needed for other purposes
         // speakerAngles.push({ id: speaker.id, azimuthRad, azimuthDeg, elevationRad, elevationDeg });
     });
-
-    /* --- Hide Adjacent Speaker Angles (For Now) ---
-    // // Sort speakers by azimuth for drawing adjacent lines
-    // speakerAngles.sort((a, b) => a.azimuthRad - b.azimuthRad);
-
-    // // --- Draw Lines Between Adjacent Speakers ---
-    // if (speakerAngles.length > 1) {
-    //     ctx.strokeStyle = 'rgba(200, 0, 0, 0.5)'; // Reddish color for adjacent angles
-    //     ctx.lineWidth = ANGLE_LINE_WIDTH; // Use constant
-    //     for (let i = 0; i < speakerAngles.length; i++) {
-    //         const current = speakerAngles[i];
-    //         const next = speakerAngles[(i + 1) % speakerAngles.length]; // Wrap around
-
-    //         // Find corresponding speaker positions
-    //         const currentSpeaker = speakers.find(s => s.id === current.id);
-    //         const nextSpeaker = speakers.find(s => s.id === next.id);
-    //         if (!currentSpeaker || !nextSpeaker) continue;
-
-    //         const currentSpeakerPos = metersToPixelsCoords(currentSpeaker.x, currentSpeaker.y);
-    //         const nextSpeakerPos = metersToPixelsCoords(nextSpeaker.x, nextSpeaker.y);
-
-    //         // Calculate angle between adjacent speakers
-    //         let adjacentAngleRad = next.azimuthRad - current.azimuthRad;
-
-    //         // Handle wrap-around (e.g., from +170 deg to -170 deg)
-    //         if (adjacentAngleRad > Math.PI) {
-    //             adjacentAngleRad -= 2 * Math.PI;
-    //         } else if (adjacentAngleRad < -Math.PI) {
-    //             adjacentAngleRad += 2 * Math.PI;
-    //         }
-    //         let adjacentAngleDeg = radiansToDegrees(adjacentAngleRad);
-
-    //         // Draw arc between speakers (centered at listener)
-    //         const arcRadius = 35; // Radius for the arc
-    //         ctx.beginPath();
-    //         // atan2 uses angle from positive X-axis, need conversion for arc
-    //         // Or, stick to our azimuth system: angle relative to -Y axis.
-    //         // Start angle: current.azimuthRad. End angle: next.azimuthRad.
-    //         // Canvas arc angles are relative to positive X-axis, clockwise.
-    //         // Our azimuth is relative to negative Y-axis, counter-clockwise.
-    //         // Angle conversion: canvas_angle = PI/2 - azimuth_rad
-    //         const startAngleCanvas = Math.PI / 2 - current.azimuthRad;
-    //         const endAngleCanvas = Math.PI / 2 - next.azimuthRad;
-
-    //         // Handle arc direction correctly for wrap-around
-    //         const counterClockwise = adjacentAngleRad < 0; // If angle is negative, arc goes CCW in our system -> CW in canvas
-    //         ctx.arc(listenerPos.x, listenerPos.y, arcRadius, startAngleCanvas, endAngleCanvas, counterClockwise);
-    //         ctx.stroke();
-
-    //         // --- Draw Adjacent Angle Text ---
-    //         // Calculate midpoint angle for text placement, adjusting for wrap-around
-    //         let midAzimuthRad = current.azimuthRad + adjacentAngleRad / 2;
-
-    //         // Adjust for angle system differences when placing text
-    //         const textRadius = arcRadius + 10; // Place text just outside the arc
-    //         const textPosX = listenerPos.x + textRadius * Math.sin(midAzimuthRad); // Use sin/cos with *our* azimuth
-    //         const textPosY = listenerPos.y - textRadius * Math.cos(midAzimuthRad);
-
-    //         ctx.font = `${ANGLE_FONT_SIZE - 2}px Arial`; // Slightly smaller font for adjacent
-    //         ctx.fillStyle = 'darkred';
-    //         ctx.textAlign = 'center';
-    //         ctx.textBaseline = 'middle';
-    //         ctx.fillText(`${adjacentAngleDeg.toFixed(1)}°`, textPosX, textPosY);
-    //     }
-    */
 }
 
 function drawAdjacentSpeakerAngles() {
@@ -404,9 +388,6 @@ function drawAdjacentSpeakerAngles() {
             const angleBetween = angleDifference(currentSpeaker.azimuth, nextSpeaker.azimuth);
 
             // Convert *our* azimuth (clockwise from North) to canvas angle (anti-clockwise from East)
-            // const canvasAngleRad = degreesToRadians(-midAzimuthDeg + 90);
-
-            // --- Calculate Canvas Angles (for arc drawing) ---
             // atan2(y, x) gives angle relative to positive x-axis (East), counter-clockwise
             // We need y = speakerY_px - listenerY_px, x = speakerX_px - listenerX_px
             const pos1 = metersToPixelsCoords(currentSpeaker.x, currentSpeaker.y);
@@ -429,11 +410,11 @@ function drawAdjacentSpeakerAngles() {
              }
 
             // --- Draw the Arc ---
-            ctx.beginPath();
-            ctx.arc(listenerPos.x, listenerPos.y, arcRadiusPx, angle1, angle2); // Use canvas angles
-            ctx.strokeStyle = color; // Use selected color
-            ctx.lineWidth = ADJACENT_ANGLE_ARC_WIDTH;
-            ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(listenerPos.x, listenerPos.y, arcRadiusPx, angle1, angle2); // Use canvas angles
+        ctx.strokeStyle = color; // Use selected color
+        ctx.lineWidth = ADJACENT_ANGLE_ARC_WIDTH;
+        ctx.stroke();
 
             // --- Calculate Midpoint Angle for Text (on canvas) ---
             let midCanvasAngleRad = (angle1 + angle2) / 2;
@@ -455,8 +436,66 @@ function drawAdjacentSpeakerAngles() {
         }
     };
 
+    console.log('Bed speakers count:', bedSpeakers.length, bedSpeakers);
+    if (bedSpeakers.length < 2) {
+        console.warn('Not enough bed speakers to draw arcs!');
+    }
     drawAnglesForList(bedSpeakers, 'bed');
     drawAnglesForList(ceilingSpeakers, 'ceiling');
+}
+
+// --- Draw Measurement Function ---
+function drawMeasurement() {
+    if (!isMeasuring || !measureStart) {
+        return; // Exit if not measuring or start not set
+    }
+
+    // Determine the end point to draw to (either fixed or current mouse pos)
+    const endPointToDraw = measureEnd ? measureEnd : currentMeasureEnd;
+
+    console.log(`drawMeasurement state: isMeasuring=${isMeasuring}, start=${!!measureStart}, end=${!!measureEnd}, currentEnd=${!!currentMeasureEnd}, endPointToDraw=${!!endPointToDraw}`); // DEBUG
+
+    // Draw start point
+    const startPx = metersToPixelsCoords(measureStart.x_met, measureStart.y_met); // FIX: Use x_met, y_met
+    ctx.fillStyle = MEASUREMENT_POINT_COLOR;
+    ctx.beginPath();
+    ctx.arc(startPx.x, startPx.y, MEASUREMENT_POINT_RADIUS_PX, 0, 2 * Math.PI);
+    ctx.fill();
+
+    // Draw end point and line if an end point exists (fixed or current)
+    if (endPointToDraw) {
+        const endPx = metersToPixelsCoords(endPointToDraw.x_met, endPointToDraw.y_met);
+
+        // Draw line
+        ctx.beginPath();
+        ctx.moveTo(startPx.x, startPx.y);
+        ctx.lineTo(endPx.x, endPx.y);
+        ctx.strokeStyle = MEASUREMENT_LINE_COLOR;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Draw end point (only draw the solid end point if it's fixed)
+        if (measureEnd) {
+            ctx.fillStyle = MEASUREMENT_POINT_COLOR;
+            ctx.beginPath();
+            ctx.arc(endPx.x, endPx.y, MEASUREMENT_POINT_RADIUS_PX, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+
+        // Calculate and display distance
+        const dx = endPointToDraw.x_met - measureStart.x_met; // FIX: Use x_met, y_met
+        const dy = endPointToDraw.y_met - measureStart.y_met; // FIX: Use x_met, y_met
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Position text near the middle of the line
+        const midX = (startPx.x + endPx.x) / 2;
+        const midY = (startPx.y + endPx.y) / 2;
+        ctx.fillStyle = MEASUREMENT_TEXT_COLOR;
+        ctx.font = `${MEASUREMENT_FONT_SIZE_PX}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom'; // Position text slightly above the line midpoint
+        ctx.fillText(`${distance.toFixed(2)} m`, midX, midY - 5); // Offset text slightly
+    }
 }
 
 function redraw() {
@@ -501,21 +540,64 @@ function redraw() {
     drawSpeakers(); // Draw existing speakers
     drawAngles(); // Draw angles after speakers
     drawAdjacentSpeakerAngles(); // Draw adjacent speaker angles
+    console.log("Redraw: About to call drawMeasurement()"); // Add log
+    drawMeasurement(); // Draw measurement line and text
     updateListenerPositionInfo(); // Call the new function here
     autosaveState(); // Autosave after every redraw
 }
 
+// --- Speaker Placement Snap Function (Meters) ---
+// Takes the potential x, y coordinates, the z level, and optionally the index of the speaker being dragged
+function getSnappedSpeakerPosition(x, y, z, draggedIndex = -1) {
+    let snappedX = x;
+    let snappedY = y;
+    let didSnap = false;
+
+    // Snap X or Y independently to other speakers on the SAME level
+    for (let i = 0; i < speakers.length; i++) {
+        // Skip comparing the speaker to itself if it's being dragged
+        if (i === draggedIndex) {
+            continue;
+        }
+
+        const speaker = speakers[i];
+        if (speaker.z === z) {
+            // Check X snap
+            if (Math.abs(x - speaker.x) < SNAP_THRESHOLD_POS_METERS) {
+                snappedX = speaker.x;
+                didSnap = true;
+            }
+            // Check Y snap
+            if (Math.abs(y - speaker.y) < SNAP_THRESHOLD_POS_METERS) {
+                snappedY = speaker.y;
+                didSnap = true;
+            }
+        }
+    }
+
+    return { x: snappedX, y: snappedY, snapped: didSnap };
+}
+
 function addSpeaker(x, y, type = 'bed') {
-    // Assign Z based on type and current room height OR listener height
-    const z = (type === 'ceiling') ? room.height : LISTENER_EAR_HEIGHT; // Use listener height for bed level
-    const newSpeaker = { x, y, z, type, isSnapped: false }; // Added z and isSnapped
+    // Calculate z first
+    const z = (type === 'ceiling') ? room.height : LISTENER_EAR_HEIGHT;
+    // Pass z to the snapping function
+    const snapResult = getSnappedSpeakerPosition(x, y, z);
+    const newSpeaker = {
+        x: snapResult.x,
+        y: snapResult.y,
+        z, // Use the calculated z
+        type,
+        isSnapped: snapResult.snapped
+    };
     speakers.push(newSpeaker);
     updateSpeakerList();
-    redraw();
+    redraw(); // Trigger full redraw
 }
 
 function clearSpeakers() {
     speakers = [];
+    isPlacingSpeaker = false; // Ensure placement modes are off
     updateSpeakerList();
     redraw();
 }
@@ -601,11 +683,11 @@ function loadDesign(event) {
             const loadedData = JSON.parse(e.target.result);
 
             // Basic validation
-            if (loadedData && loadedData.room && loadedData.listener && loadedData.tv && Array.isArray(loadedData.speakers)) {
+            if (loadedData && loadedData.room && loadedData.listener && loadedData.tv && loadedData.speakers) {
                 // Update state
                 room = loadedData.room;
                 listener = loadedData.listener;
-                tv = loadedData.tv; // Load the TV object (mainly for width)
+                tv.width = loadedData.tv.width; // Restore TV width
                 speakers = loadedData.speakers;
 
                 // Update input controls (excluding tv.x and tv.y inputs)
@@ -651,133 +733,230 @@ listenerXInput.addEventListener('input', () => {
     input.addEventListener('input', redraw);
 });
 
-addSpeakerBtn.addEventListener('click', () => {
-    isPlacingSpeaker = true;
-    speakerTypeToPlace = 'bed';
-    canvas.style.cursor = 'crosshair'; // Indicate placement mode
-    console.log("Placement mode activated for bed speaker. Click on the canvas.");
-});
+// --- Helper function to manage tool activation states ---
+const toolCursors = {
+    'bed': 'crosshair',
+    'ceiling': 'crosshair',
+    'measure': 'crosshair',
+};
 
-addCeilingSpeakerBtn.addEventListener('click', () => {
-    isPlacingSpeaker = true;
-    speakerTypeToPlace = 'ceiling'; // Set type to ceiling
-    canvas.style.cursor = 'crosshair';
-    console.log("Placement mode activated for CEILING speaker. Click on the canvas.");
-});
+function setActiveTool(buttonToActivate) { // Removed 'activate' parameter
+    // Determine tool name early, handle null case
+    const toolName = buttonToActivate ? buttonToActivate.dataset.tool : null;
+    console.log(`setActiveTool called for: ${toolName || 'null (deactivation)'}`);
 
-clearSpeakersBtn.addEventListener('click', clearSpeakers);
+    // 1. Reset ALL internal tool states first
+    const wasMeasuring = isMeasuring; // Remember if we need to redraw for clearing lines
+    isPlacingSpeaker = false;
+    speakerTypeToPlace = null; // 'bed' or 'ceiling'
+    isMeasuring = false;
+    measureStart = null; // { x_met, y_met } in meters
+    measureEnd = null; // { x_met, y_met } in meters
+    currentMeasureEnd = null; // { x_met, y_met } temporary endpoint during mouse move
+    isDraggingListener = false;
+    isDraggingSpeaker = false; // Declare globally
+    draggedSpeakerIndex = -1;  // Declare globally
+    isDragging = false;
+    // Reset other tool states here if added later
 
-canvas.addEventListener('mousedown', (event) => {
-    if (isPlacingSpeaker) return; // Don't drag while placing
-
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
-    const clickCoordsMet = pixelsToMetersCoords(mouseX, mouseY);
-
-    // Check if clicking on the listener first
-    const listenerPosPx = metersToPixelsCoords(listener.x, listener.y);
-    const distToListener = Math.sqrt((mouseX - listenerPosPx.x)**2 + (mouseY - listenerPosPx.y)**2);
-
-    if (distToListener <= LISTENER_RADIUS_PX + PADDING/4) { // Check click near listener (+ tolerance)
-        isDragging = true;
-        isDraggingListener = true;
-        draggedSpeakerIndex = -1; // Ensure speaker isn't dragged
-        // Offset is difference between listener's actual meter coords and clicked meter coords
-        dragOffsetX = listener.x - clickCoordsMet.x;
-        dragOffsetY = listener.y - clickCoordsMet.y;
-        canvas.style.cursor = 'grabbing';
-        // console.log("Dragging listener started");
-        return; // Listener takes priority
-    }
-
-    // Check if clicking on a speaker (existing logic)
-    draggedSpeakerIndex = speakers.findIndex(speaker => {
-        const speakerPos = metersToPixelsCoords(speaker.x, speaker.y);
-        const distance = Math.sqrt((mouseX - speakerPos.x)**2 + (mouseY - speakerPos.y)**2);
-        return distance <= SPEAKER_RADIUS_PX + PADDING/4 ; // Check within radius + tolerance
+    // 2. Update Visuals: Clear all buttons first
+    buttons.forEach(btn => {
+        console.log(`Attempting to remove active-tool from: ${btn.id}`); // DEBUG
+        btn.classList.remove('active-tool');
     });
 
-    if (draggedSpeakerIndex !== -1) {
+    // 3. Activate the target tool's state and visuals (if activating)
+    // if (activate) { // No longer use activate flag
+    if (buttonToActivate) {
+        // const toolName = buttonToActivate.dataset.tool; // Already determined above
+        buttonToActivate.classList.add('active-tool');
+        canvas.style.cursor = toolCursors[toolName] || 'default';
+
+        // Set internal state for the activated tool
+        if (toolName === 'bed' || toolName === 'ceiling') {
+            isPlacingSpeaker = true;
+            speakerTypeToPlace = toolName;
+        } else if (toolName === 'measure') {
+            // isMeasuring = true; // REMOVE: Let mousedown handle setting this on first click
+        }
+    } else {
+        // Deactivating all tools (buttonToActivate is null)
+        console.log("Deactivating all tools explicitly.");
+        canvas.style.cursor = 'default';
+        // Internal states already reset in step 1
+    }
+
+    // 4. Redraw if measurement was active and is now cleared OR unconditionally
+    if (wasMeasuring && !isMeasuring) {
+        redraw();
+    }
+    redraw(); // Redraw unconditionally to reflect tool state changes
+}
+
+// Add event listeners to buttons
+addSpeakerBtn.addEventListener('click', () => {
+    const isCurrentlyActive = addSpeakerBtn.classList.contains('active-tool');
+    setActiveTool(isCurrentlyActive ? null : addSpeakerBtn);
+});
+addCeilingSpeakerBtn.addEventListener('click', () => {
+    const isCurrentlyActive = addCeilingSpeakerBtn.classList.contains('active-tool');
+    setActiveTool(isCurrentlyActive ? null : addCeilingSpeakerBtn);
+});
+
+// Attach clearSpeakers event to button
+clearSpeakersBtn.addEventListener('click', clearSpeakers);
+measureBtn.addEventListener('click', () => {
+    const isCurrentlyActive = measureBtn.classList.contains('active-tool');
+    setActiveTool(isCurrentlyActive ? null : measureBtn);
+});
+
+canvas.addEventListener('mousedown', (event) => {
+    console.log(`Mousedown Start: isPlacingSpeaker=${isPlacingSpeaker}, isMeasuring=${isMeasuring}`);
+
+    // Calculate mouse coordinates relative to canvas ONCE at the beginning
+    const rect = canvas.getBoundingClientRect();
+    const x_px = event.clientX - rect.left;
+    const y_px = event.clientY - rect.top;
+
+    // If placing a speaker, add it and keep placement mode active
+    if (isPlacingSpeaker) {
+        console.log(`Attempting to place speaker type: ${speakerTypeToPlace}`); // DEBUG
+        const { x_met, y_met } = pixelsToMetersCoords(x_px, y_px); // Restore destructuring
+
+        // Basic boundary check before adding
+        if (x_met !== undefined && y_met !== undefined && // Ensure values exist
+            x_met >= 0 && x_met <= room.width &&
+            y_met >= 0 && y_met <= room.depth) {
+            addSpeaker(x_met, y_met, speakerTypeToPlace); // addSpeaker now handles snapping
+        } else {
+            // console.log("Clicked outside room bounds during placement or invalid coords."); // Optional log
+        }
+        return; // Prevent starting drag actions while placing
+    }
+
+    // --- Measurement Logic --- Detect if tool button is active first
+    // else if (isMeasuring) { // OLD CHECK
+    else if (measureBtn.classList.contains('active-tool')) { // Check if the tool button is active
+        const { x_met, y_met } = pixelsToMetersCoords(x_px, y_px);
+        const currentClickMeters = { x_met, y_met };
+
+        if (!isMeasuring) {
+            // If not currently measuring, this click STARTS a new measurement.
+            // This covers the very first click AND the third click (starting anew).
+            measureStart = currentClickMeters;
+            measureEnd = null;
+            currentMeasureEnd = null;
+            isMeasuring = true; // Start measuring phase
+            console.log("Measure start point set / New measurement started:", measureStart);
+        } else {
+            // If already measuring (isMeasuring is true), this click ENDS the measurement.
+            measureEnd = currentClickMeters;
+            currentMeasureEnd = null; // Clear dynamic endpoint
+            isMeasuring = false; // End measuring phase
+            console.log("Measure end point set:", measureEnd);
+        }
+        redraw();
+        return; // Prevent starting drag actions while measuring
+    }
+
+    // Clicked on empty space, start dragging background or listener?
+    const listenerPosPx = metersToPixelsCoords(listener.x, listener.y);
+    const distToListenerPx = Math.sqrt((x_px - listenerPosPx.x) ** 2 + (y_px - listenerPosPx.y) ** 2);
+
+    if (distToListenerPx <= LISTENER_RADIUS_PX + PADDING/4 ) {
+        isDraggingListener = true;
         isDragging = true;
-        isDraggingListener = false; // Ensure listener isn't dragged
-        const speaker = speakers[draggedSpeakerIndex];
-        // Calculate offset in meters
-        dragOffsetX = speaker.x - clickCoordsMet.x;
-        dragOffsetY = speaker.y - clickCoordsMet.y;
-        canvas.style.cursor = 'grabbing';
-        // console.log(`Dragging speaker ${draggedSpeakerIndex} started`);
+        dragOffsetX = x_px - listenerPosPx.x;
+        dragOffsetY = y_px - listenerPosPx.y;
+        canvas.style.cursor = 'grabbing'; // Set cursor immediately
+    } else {
+        // --- Speaker Dragging ---
+        // Check if mouse is near any speaker
+        let foundSpeaker = false;
+        for (let i = 0; i < speakers.length; i++) {
+            const spk = speakers[i];
+            const spkPosPx = metersToPixelsCoords(spk.x, spk.y);
+            const distToSpeakerPx = Math.sqrt((x_px - spkPosPx.x) ** 2 + (y_px - spkPosPx.y) ** 2);
+            if (distToSpeakerPx <= SPEAKER_RADIUS_PX + 6) { // 6px padding for easier grabbing
+                isDraggingSpeaker = true;
+                isDragging = true;
+                draggedSpeakerIndex = i;
+                dragOffsetX = x_px - spkPosPx.x;
+                dragOffsetY = y_px - spkPosPx.y;
+                canvas.style.cursor = 'grabbing'; // Set cursor immediately
+                foundSpeaker = true;
+                break;
+            }
+        }
+        if (!foundSpeaker) {
+            // Potential future background drag or other interactions
+        }
     }
 });
 
 canvas.addEventListener('mousemove', (event) => {
     const rect = canvas.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
-    const currentCoords = pixelsToMetersCoords(mouseX, mouseY);
+    const x_px = event.clientX - rect.left;
+    const y_px = event.clientY - rect.top;
 
+    // --- Measurement Update ---
+    if (isMeasuring && measureStart) {
+        const endPointPx = { x: x_px, y: y_px };
+        const snappedEnd = getSnappedMeasurementPoint(endPointPx.x, endPointPx.y);
+        currentMeasureEnd = snappedEnd.meters; // Update the temporary end point { x_met, y_met }
+        console.log("mousemove updated currentMeasureEnd:", currentMeasureEnd); // DEBUG
+        redraw();
+    }
+
+    // --- Dragging Update ---
     if (isDraggingListener) {
+        canvas.style.cursor = 'grabbing';
         // Clamp listener position to room boundaries
-        listener.x = Math.max(0, Math.min(room.width, currentCoords.x));
-        listener.y = Math.max(0, Math.min(room.depth, currentCoords.y));
+        listener.x = Math.max(0, Math.min(room.width, pixelsToMetersCoords(x_px, y_px).x_met));
+        listener.y = Math.max(0, Math.min(room.depth, pixelsToMetersCoords(x_px, y_px).y_met));
         // Update inputs visually during drag
         listenerXInput.value = listener.x.toFixed(2);
         listenerYInput.value = listener.y.toFixed(2);
         redraw(); // Redraw continuously while dragging listener
-    } else if (isDragging && draggedSpeakerIndex !== -1) {
-        const speaker = speakers[draggedSpeakerIndex];
-        let targetX = currentCoords.x;
-        let targetY = currentCoords.y;
+    } else if (isDraggingSpeaker && draggedSpeakerIndex !== -1) {
+        canvas.style.cursor = 'grabbing';
+        // Dragging a speaker
+        // Clamp speaker position to room boundaries (pre-snap)
+        const { x_met, y_met } = pixelsToMetersCoords(x_px - dragOffsetX, y_px - dragOffsetY);
+        let clampedX = Math.max(0, Math.min(room.width, x_met));
+        let clampedY = Math.max(0, Math.min(room.depth, y_met));
+        // Snap to other speakers at the same Z-level, passing the index to avoid self-snapping
+        const snapResult = getSnappedSpeakerPosition(clampedX, clampedY, speakers[draggedSpeakerIndex].z, draggedSpeakerIndex);
+        speakers[draggedSpeakerIndex].x = snapResult.x;
+        speakers[draggedSpeakerIndex].y = snapResult.y;
+        speakers[draggedSpeakerIndex].isSnapped = snapResult.snapped;
+        redraw(); // Redraw continuously while dragging speaker
+    } else {
+        // Only update cursor if NOT dragging anything
+        // Check if over listener
+        const listenerPosPx = metersToPixelsCoords(listener.x, listener.y);
+        const distToListenerPx = Math.sqrt((x_px - listenerPosPx.x) ** 2 + (y_px - listenerPosPx.y) ** 2);
+        let overObject = distToListenerPx <= LISTENER_RADIUS_PX + PADDING/4;
 
-        // --- Positional Snapping Logic ---
-        let isSnapped = false;
-        let snappedX = targetX; // Start with current mouse position
-        let snappedY = targetY;
-
-        for (let i = 0; i < speakers.length; i++) {
-            if (i === draggedSpeakerIndex) continue; // Don't snap to self
-
-            const otherSpeaker = speakers[i];
-
-            // Only snap to speakers of the same type
-            if (otherSpeaker.type === speaker.type) {
-                // Check X snap
-                if (Math.abs(targetX - otherSpeaker.x) < SNAP_THRESHOLD_POS_METERS) {
-                    snappedX = otherSpeaker.x; // Snap X coordinate
-                    isSnapped = true;
-                }
-                // Check Y snap (independent of X snap)
-                if (Math.abs(targetY - otherSpeaker.y) < SNAP_THRESHOLD_POS_METERS) {
-                    snappedY = otherSpeaker.y; // Snap Y coordinate
-                    isSnapped = true;
+        // Check if over any speaker
+        if (!overObject) {
+            for (let i = 0; i < speakers.length; i++) {
+                const spk = speakers[i];
+                const spkPosPx = metersToPixelsCoords(spk.x, spk.y);
+                const distToSpeakerPx = Math.sqrt((x_px - spkPosPx.x) ** 2 + (y_px - spkPosPx.y) ** 2);
+                if (distToSpeakerPx <= SPEAKER_RADIUS_PX + 6) {
+                    overObject = true;
+                    break;
                 }
             }
         }
-        // --- End Positional Snapping Logic ---
 
-        // Use snapped coordinates if a snap occurred
-        targetX = snappedX;
-        targetY = snappedY;
-
-        // Clamp final target coordinates to room boundaries
-        speaker.x = Math.max(0, Math.min(room.width, targetX));
-        speaker.y = Math.max(0, Math.min(room.depth, targetY));
-        speaker.isSnapped = isSnapped; // Store snap state for visual feedback
-
-        redraw(); // Redraw with updated position and snap state
-
-    } else {
-        // Hover logic (no dragging)
-        const listenerPosPx = metersToPixelsCoords(listener.x, listener.y);
-        const distToListener = Math.sqrt((mouseX - listenerPosPx.x)**2 + (mouseY - listenerPosPx.y)**2);
-        let onSpeaker = speakers.some(speaker => {
-            const speakerPos = metersToPixelsCoords(speaker.x, speaker.y);
-            const distance = Math.sqrt((mouseX - speakerPos.x)**2 + (mouseY - speakerPos.y)**2);
-            return distance <= SPEAKER_RADIUS_PX + PADDING/4;
-        });
-
-        if (distToListener <= LISTENER_RADIUS_PX + PADDING/4 || onSpeaker) {
-            canvas.style.cursor = 'grab';
+        if (overObject) {
+             canvas.style.cursor = 'grab'; // Use 'grab' for hover, changes to 'grabbing' on mousedown
+        } else if (isPlacingSpeaker) {
+            canvas.style.cursor = 'crosshair';
+        } else if (isMeasuring) {
+            canvas.style.cursor = 'crosshair'; // Or specific measurement cursor
         } else {
             canvas.style.cursor = 'default';
         }
@@ -785,72 +964,30 @@ canvas.addEventListener('mousemove', (event) => {
 });
 
 canvas.addEventListener('mouseup', (event) => {
-    if (isDraggingListener) {
-        isDraggingListener = false;
-    } else if (isDragging && draggedSpeakerIndex !== -1) {
-        if (speakers[draggedSpeakerIndex]) {
-            speakers[draggedSpeakerIndex].isSnapped = false; // Reset snap state
-        }
-        isDragging = false;
-        draggedSpeakerIndex = -1;
-        // Optional: Update speaker list or perform other actions on drop
-    }
+    // Always reset all drag flags
+    let wasDragging = isDragging || isDraggingListener || isDraggingSpeaker;
+    isDraggingListener = false;
+    isDraggingSpeaker = false;
+    draggedSpeakerIndex = -1;
+    isDragging = false;
     // Force redraw AFTER resetting flags to remove snap highlight
     redraw();
-    // Update cursor style
-    canvas.style.cursor = 'grab';
+    // Update cursor to reflect hover state after drag ends
+    const rect = canvas.getBoundingClientRect();
+    const x_px = event.clientX - rect.left;
+    const y_px = event.clientY - rect.top;
+    // Removed call to updateCanvasCursorOnHover
 });
 
 canvas.addEventListener('mouseout', (event) => {
-    if (isDraggingListener) {
-        isDraggingListener = false;
-        // Don't reset position on mouseout, keep last valid position
-        redraw();
-    } else if (isDragging && draggedSpeakerIndex !== -1) {
-        if (speakers[draggedSpeakerIndex]) {
-            speakers[draggedSpeakerIndex].isSnapped = false; // Reset snap state
-        }
-        isDragging = false;
-        draggedSpeakerIndex = -1;
-        // Don't reset position on mouseout
-        redraw();
-    }
-    // Reset cursor if not over canvas anymore?
-});
-
-canvas.addEventListener('click', (event) => {
-    // Only place speaker if NOT dragging and placement mode is active
-    if (isDragging || !isPlacingSpeaker) {
-        // If we just finished dragging, the mouseup already handled redraw.
-        // If placement isn't active, do nothing.
-        return;
-    }
-
-    // Existing placement logic... (check boundaries, add speaker)
-    const rect = canvas.getBoundingClientRect();
-    const canvasX = event.clientX - rect.left;
-    const canvasY = event.clientY - rect.top;
-
-    // Check click is within padded area
-    if (canvasX < PADDING || canvasX > canvas.width - PADDING || canvasY < PADDING || canvasY > canvas.height - PADDING) {
-        console.log("Clicked outside drawable area (in padding).");
-        // Deactivate placement mode even on bad click? Optional.
-        // isPlacingSpeaker = false;
-        // canvas.style.cursor = 'default';
-        return; // Click is in the padding, not the room area
-    }
-
-    // Convert click to meters and clamp
-    const coords_met = pixelsToMetersCoords(canvasX, canvasY);
-    coords_met.x = Math.max(0, Math.min(room.width, coords_met.x));
-    coords_met.y = Math.max(0, Math.min(room.depth, coords_met.y));
-
-    addSpeaker(coords_met.x, coords_met.y, speakerTypeToPlace);
-
-    // Exit placement mode
-    isPlacingSpeaker = false;
-    canvas.style.cursor = 'default'; // Reset cursor after placement
-    console.log("Speaker placed. Placement mode deactivated.");
+    // Always reset all drag flags
+    isDraggingListener = false;
+    isDraggingSpeaker = false;
+    draggedSpeakerIndex = -1;
+    isDragging = false;
+    redraw();
+    // Reset cursor if not over canvas anymore
+    canvas.style.cursor = 'default';
 });
 
 // Save/Load Button Listeners
@@ -915,36 +1052,44 @@ function loadAutosavedState() {
 
 // Initial setup
 document.addEventListener('DOMContentLoaded', () => {
-    const loaded = loadAutosavedState(); // Attempt to load saved state first
+    // 1. Attempt to load autosaved state FIRST
+    const loaded = loadAutosavedState();
 
+    // 2. If loading failed, set up default values
     if (!loaded) {
-        // If nothing loaded, set up defaults
+        console.log("No valid autosave found. Using default values.");
+        // Ensure default values from HTML inputs are reflected in state
         room.width = parseFloat(roomWidthInput.value);
         room.depth = parseFloat(roomDepthInput.value);
         room.height = parseFloat(roomHeightInput.value);
 
-        // Calculate and set default listener position only if not loaded
-        let defaultListenerX = room.width / 2;
-        let defaultListenerY = room.depth - 0.7;
-        listener.x = Math.max(0, Math.min(room.width, defaultListenerX));
-        listener.y = Math.max(0, Math.min(room.depth, defaultListenerY));
+        // Calculate and set default listener position
+        listener.x = room.width / 2;
+        listener.y = Math.max(0, room.depth - 0.7); // 0.7m from back wall, ensure not negative
+        // Clamp within room boundaries (though Y should be fine)
+        listener.x = Math.max(0, Math.min(room.width, listener.x));
+        listener.y = Math.max(0, Math.min(room.depth, listener.y));
+
         listenerXInput.value = listener.x.toFixed(2);
         listenerYInput.value = listener.y.toFixed(2);
 
         tv.width = parseFloat(tvSizeInput.value); // Get initial TV width
-        console.log("No valid autosave found. Using default values.");
+        // speakers array is already empty by default
     }
 
-    // Initial setup (always needed, uses loaded or default state)
-    calculateScaleAndResizeCanvas(); // Calculate scale based on current room dimensions
-    redraw(); // Perform initial draw with loaded or default state (this also calls autosave)
+    // 3. Perform initial setup and redraw AFTER state is determined (loaded or default)
+    calculateScaleAndResizeCanvas();
+    updateListenerPositionInfo();
+    updateCanvasCursor(); // Initial cursor state based on final initial state
+    updateSpeakerList(); // Ensure speaker list UI is updated if state was loaded
+    redraw(); // Perform initial draw (this will also trigger the first autosave of the correct state)
 
-    // Setup event listeners for input changes
+    // 4. Setup event listeners for subsequent changes
     roomWidthInput.addEventListener('input', redraw);
+    roomDepthInput.addEventListener('input', redraw);
+    // Redraw on window resize
+    window.addEventListener('resize', redraw);
 });
-
-// Redraw on window resize
-window.addEventListener('resize', redraw);
 
 function updateListenerPositionInfo() {
     if (!distFrontSpan || !distBackSpan) {
@@ -960,4 +1105,14 @@ function updateListenerPositionInfo() {
 
     distFrontSpan.textContent = displayDistFront.toFixed(2);
     distBackSpan.textContent = displayDistBack.toFixed(2);
+}
+
+function updateCanvasCursor() {
+    if (isDraggingListener) {
+        canvas.style.cursor = 'grabbing';
+    } else if (isMeasuring || isPlacingSpeaker) {
+        canvas.style.cursor = 'crosshair';
+    } else {
+        canvas.style.cursor = 'default';
+    }
 }
