@@ -56,6 +56,7 @@ let dragOffsetX = 0;
 let dragOffsetY = 0;
 let scale = 1;
 let PADDING = 50; // Initial padding
+let currentSnapDetails = null; // Stores {x, y, snapped, snappedXTo, snappedYTo} during drag
 
 // --- Drawing Constants ---
 const LISTENER_EAR_HEIGHT = 1.2; // Assumed listener ear height in meters
@@ -274,6 +275,56 @@ function drawSpeakers() {
     });
 }
 
+function drawSnapLines() {
+    // Log entry and initial state check
+    console.log("drawSnapLines called. isDragging:", isDraggingSpeaker, ", index:", draggedSpeakerIndex, ", details:", JSON.stringify(currentSnapDetails));
+
+    // Only draw if dragging a speaker and snap details are available AND a snap occurred
+    if (isDraggingSpeaker && draggedSpeakerIndex !== -1 && currentSnapDetails && currentSnapDetails.snapped) {
+        console.log("drawSnapLines: Conditions met, proceeding to draw."); // <<< Log condition met
+        const draggedSpeaker = speakers[draggedSpeakerIndex];
+        const draggedPosPx = metersToPixelsCoords(draggedSpeaker.x, draggedSpeaker.y);
+        console.log("  Dragged Speaker Px:", JSON.stringify(draggedPosPx)); // <<< Log dragged speaker pos
+
+        ctx.save(); // Save context state
+        // --- DEBUGGING: Use bright, solid line ---
+        ctx.strokeStyle = 'magenta'; // Bright color
+        ctx.lineWidth = 2;          // Thicker line
+        ctx.setLineDash([]);        // Solid line
+        console.log("  Using debug line style (magenta, solid, thick)"); // Log style change
+
+        // Draw X snap line (vertical) if X was snapped
+        if (currentSnapDetails.snappedXTo !== -1) {
+            console.log("  Attempting to draw X snap line to speaker index:", currentSnapDetails.snappedXTo); // <<< Log X snap attempt
+            const snapTargetSpeaker = speakers[currentSnapDetails.snappedXTo];
+            const targetXpx = metersToPixelsCoords(snapTargetSpeaker.x, draggedSpeaker.y).x;
+            console.log("    Target X Px:", targetXpx); // <<< Log target X coord
+            ctx.beginPath();
+            ctx.moveTo(draggedPosPx.x, draggedPosPx.y);
+            ctx.lineTo(targetXpx, draggedPosPx.y);
+            ctx.stroke();
+            console.log("    X line drawn."); // <<< Log X line drawn
+        }
+
+        // Draw Y snap line (horizontal) if Y was snapped
+        if (currentSnapDetails.snappedYTo !== -1) {
+            console.log("  Attempting to draw Y snap line to speaker index:", currentSnapDetails.snappedYTo); // <<< Log Y snap attempt
+            const snapTargetSpeaker = speakers[currentSnapDetails.snappedYTo];
+            const targetYpx = metersToPixelsCoords(draggedSpeaker.x, snapTargetSpeaker.y).y;
+            console.log("    Target Y Px:", targetYpx); // <<< Log target Y coord
+            ctx.beginPath();
+            ctx.moveTo(draggedPosPx.x, draggedPosPx.y);
+            ctx.lineTo(draggedPosPx.x, targetYpx);
+            ctx.stroke();
+            console.log("    Y line drawn."); // <<< Log Y line drawn
+        }
+
+        ctx.restore(); // Restore context state (solid lines, default color)
+    } else {
+        console.log("drawSnapLines: Conditions NOT met."); // <<< Log condition not met
+    }
+}
+
 function drawAngles() {
     const listenerPos = metersToPixelsCoords(listener.x, listener.y);
     const listenerZ = LISTENER_EAR_HEIGHT; // Use constant for listener height
@@ -383,7 +434,7 @@ function drawAdjacentSpeakerAngles() {
 
         for (let i = 0; i < list.length; i++) {
             const currentSpeaker = list[i];
-            const nextSpeaker = list[(i + 1) % list.length]; // Wrap around
+            const nextSpeaker = list[(i + 1) % list.length]; // Use modulo to wrap around
 
             const angleBetween = angleDifference(currentSpeaker.azimuth, nextSpeaker.azimuth);
 
@@ -395,44 +446,33 @@ function drawAdjacentSpeakerAngles() {
             let angle1 = Math.atan2(pos1.y - listenerPos.y, pos1.x - listenerPos.x);
             let angle2 = Math.atan2(pos2.y - listenerPos.y, pos2.x - listenerPos.x);
 
-            // Ensure angle2 is always 'ahead' of angle1 counter-clockwise for arc drawing
-            // Add 2*PI until angle2 > angle1
+            // Ensure angle2 is always numerically greater than angle1 for CCW arc drawing
             while (angle2 <= angle1) {
                 angle2 += 2 * Math.PI;
             }
-            // If the difference is > PI, we probably went the long way around
-             if (angle2 - angle1 > Math.PI && list.length > 2) { // Check list.length > 2 avoids flipping for 2 speakers 180 apart
-                 // Swap and adjust angle1 instead
-                 [angle1, angle2] = [angle2, angle1]; // Swap
-                 while (angle1 <= angle2) {
-                    angle1 += 2 * Math.PI;
-                 }
-             }
 
-            // --- Draw the Arc ---
-        ctx.beginPath();
-        ctx.arc(listenerPos.x, listenerPos.y, arcRadiusPx, angle1, angle2); // Use canvas angles
-        ctx.strokeStyle = color; // Use selected color
-        ctx.lineWidth = ADJACENT_ANGLE_ARC_WIDTH;
-        ctx.stroke();
+            // --- Draw the Arc (always counter-clockwise from angle1 to angle2) ---
+            ctx.beginPath();
+            ctx.arc(listenerPos.x, listenerPos.y, arcRadiusPx, angle1, angle2); // Default CCW
+            ctx.strokeStyle = color; // Use selected color
+            ctx.lineWidth = ADJACENT_ANGLE_ARC_WIDTH;
+            ctx.stroke();
 
-            // --- Calculate Midpoint Angle for Text (on canvas) ---
-            let midCanvasAngleRad = (angle1 + angle2) / 2;
-             // Adjust if the angle difference was large (meaning we went across the 0/2PI boundary)
-             if (Math.abs(angle2 - angle1) > Math.PI) {
-                 midCanvasAngleRad = (angle1 + angle2) / 2 + Math.PI; // Add PI to get the angle bisector on the shorter side
-             }
+            // --- Calculate Midpoint Angle for Text (simple average) ---
+            const midCanvasAngleRad = (angle1 + angle2) / 2;
 
-            // --- Calculate Text Position ---
+            // --- Calculate Text Position --- //
             const textX = listenerPos.x + textRadiusPx * Math.cos(midCanvasAngleRad);
             const textY = listenerPos.y + textRadiusPx * Math.sin(midCanvasAngleRad);
 
             // --- Draw Text ---
-            ctx.fillStyle = color; // Use selected color
+            ctx.fillStyle = color; // Use same faint color as arc
             ctx.font = `${ADJACENT_ANGLE_FONT_SIZE_PX}px Arial`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(`Sep: ${angleBetween.toFixed(1)}°`, textX, textY);
+
+            // Position text along the midpoint angle
+            ctx.fillText(`${angleBetween.toFixed(1)}°`, textX, textY);
         }
     };
 
@@ -538,6 +578,7 @@ function redraw() {
     drawTV();
     drawListener();
     drawSpeakers(); // Draw existing speakers
+    drawSnapLines(); // Draw snap lines after speakers
     drawAngles(); // Draw angles after speakers
     drawAdjacentSpeakerAngles(); // Draw adjacent speaker angles
     console.log("Redraw: About to call drawMeasurement()"); // Add log
@@ -552,6 +593,8 @@ function getSnappedSpeakerPosition(x, y, z, draggedIndex = -1) {
     let snappedX = x;
     let snappedY = y;
     let didSnap = false;
+    let snappedXTo = -1; // Index of speaker causing X snap
+    let snappedYTo = -1; // Index of speaker causing Y snap
 
     // Snap X or Y independently to other speakers on the SAME level
     for (let i = 0; i < speakers.length; i++) {
@@ -562,20 +605,28 @@ function getSnappedSpeakerPosition(x, y, z, draggedIndex = -1) {
 
         const speaker = speakers[i];
         if (speaker.z === z) {
-            // Check X snap
+            // Check X snap - only update if not already snapped X or closer
             if (Math.abs(x - speaker.x) < SNAP_THRESHOLD_POS_METERS) {
-                snappedX = speaker.x;
-                didSnap = true;
+                 // Prioritize the closer snap if multiple are within threshold (optional complexity)
+                 // For simplicity now, just take the first one found
+                 if (snappedXTo === -1) { // Or add logic to find the minimum distance
+                    snappedX = speaker.x;
+                    didSnap = true;
+                    snappedXTo = i;
+                 }
             }
-            // Check Y snap
+            // Check Y snap - only update if not already snapped Y or closer
             if (Math.abs(y - speaker.y) < SNAP_THRESHOLD_POS_METERS) {
-                snappedY = speaker.y;
-                didSnap = true;
+                 if (snappedYTo === -1) { // Or add logic to find the minimum distance
+                    snappedY = speaker.y;
+                    didSnap = true;
+                    snappedYTo = i;
+                 }
             }
         }
     }
-
-    return { x: snappedX, y: snappedY, snapped: didSnap };
+    // Return detailed snap info
+    return { x: snappedX, y: snappedY, snapped: didSnap, snappedXTo: snappedXTo, snappedYTo: snappedYTo };
 }
 
 function addSpeaker(x, y, type = 'bed') {
@@ -927,9 +978,17 @@ canvas.addEventListener('mousemove', (event) => {
         let clampedY = Math.max(0, Math.min(room.depth, y_met));
         // Snap to other speakers at the same Z-level, passing the index to avoid self-snapping
         const snapResult = getSnappedSpeakerPosition(clampedX, clampedY, speakers[draggedSpeakerIndex].z, draggedSpeakerIndex);
+        console.log("MouseMove Snap Result:", JSON.stringify(snapResult)); // <<< Log snap details
+
+        // Update speaker position
         speakers[draggedSpeakerIndex].x = snapResult.x;
         speakers[draggedSpeakerIndex].y = snapResult.y;
+        // Update visual snap flag for highlighting the speaker itself
         speakers[draggedSpeakerIndex].isSnapped = snapResult.snapped;
+        // Store detailed snap info for drawing lines
+        currentSnapDetails = snapResult;
+        console.log("Stored currentSnapDetails:", JSON.stringify(currentSnapDetails)); // <<< Log stored details
+
         redraw(); // Redraw continuously while dragging speaker
     } else {
         // Only update cursor if NOT dragging anything
@@ -970,13 +1029,27 @@ canvas.addEventListener('mouseup', (event) => {
     isDraggingSpeaker = false;
     draggedSpeakerIndex = -1;
     isDragging = false;
-    // Force redraw AFTER resetting flags to remove snap highlight
-    redraw();
-    // Update cursor to reflect hover state after drag ends
-    const rect = canvas.getBoundingClientRect();
-    const x_px = event.clientX - rect.left;
-    const y_px = event.clientY - rect.top;
-    // Removed call to updateCanvasCursorOnHover
+    currentSnapDetails = null; // Clear snap details on mouse up
+
+    // Reset cursor based on mode or hover
+    if (isPlacingSpeaker) {
+        canvas.style.cursor = 'crosshair';
+    } else if (wasDragging) {
+        canvas.style.cursor = 'default'; // Or check hover state again
+         // Reset temporary measurement points for drawing
+         // measureStart = null; // Keep for display until next measure starts
+         // currentMeasureEnd = null; // Keep for display
+    } else {
+        canvas.style.cursor = 'default'; // Or update based on hover
+        // Potentially call cursor update function here if it exists
+    }
+
+    updateSpeakerList(); // Update list if a speaker was potentially moved
+    if (wasDragging) { // Redraw if dragging
+        redraw(); // Final redraw to remove drag effects
+    }
+
+    // No autosave here, rely on redraw's autosave
 });
 
 canvas.addEventListener('mouseout', (event) => {
