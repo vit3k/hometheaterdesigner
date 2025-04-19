@@ -276,52 +276,44 @@ function drawSpeakers() {
 }
 
 function drawSnapLines() {
-    // Log entry and initial state check
-    console.log("drawSnapLines called. isDragging:", isDraggingSpeaker, ", index:", draggedSpeakerIndex, ", details:", JSON.stringify(currentSnapDetails));
-
     // Only draw if dragging a speaker and snap details are available AND a snap occurred
     if (isDraggingSpeaker && draggedSpeakerIndex !== -1 && currentSnapDetails && currentSnapDetails.snapped) {
-        console.log("drawSnapLines: Conditions met, proceeding to draw."); // <<< Log condition met
         const draggedSpeaker = speakers[draggedSpeakerIndex];
         const draggedPosPx = metersToPixelsCoords(draggedSpeaker.x, draggedSpeaker.y);
-        console.log("  Dragged Speaker Px:", JSON.stringify(draggedPosPx)); // <<< Log dragged speaker pos
 
         ctx.save(); // Save context state
-        // --- DEBUGGING: Use bright, solid line ---
-        ctx.strokeStyle = 'magenta'; // Bright color
-        ctx.lineWidth = 2;          // Thicker line
-        ctx.setLineDash([]);        // Solid line
-        console.log("  Using debug line style (magenta, solid, thick)"); // Log style change
+        // --- Subtle Snap Line Style ---
+        ctx.strokeStyle = 'lightgray'; // Subtle color
+        ctx.lineWidth = 1;           // Standard thickness
+        ctx.setLineDash([3, 3]);     // Dashed line
 
         // Draw X snap line (vertical) if X was snapped
         if (currentSnapDetails.snappedXTo !== -1) {
-            console.log("  Attempting to draw X snap line to speaker index:", currentSnapDetails.snappedXTo); // <<< Log X snap attempt
             const snapTargetSpeaker = speakers[currentSnapDetails.snappedXTo];
-            const targetXpx = metersToPixelsCoords(snapTargetSpeaker.x, draggedSpeaker.y).x;
-            console.log("    Target X Px:", targetXpx); // <<< Log target X coord
+            // Get the pixel coordinates of the target speaker
+            const snapTargetSpeakerPx = metersToPixelsCoords(snapTargetSpeaker.x, snapTargetSpeaker.y);
+
             ctx.beginPath();
-            ctx.moveTo(draggedPosPx.x, draggedPosPx.y);
-            ctx.lineTo(targetXpx, draggedPosPx.y);
+            ctx.moveTo(draggedPosPx.x, draggedPosPx.y); // Start at dragged speaker center
+            // Line goes vertically to the target speaker's Y level
+            ctx.lineTo(draggedPosPx.x, snapTargetSpeakerPx.y);
             ctx.stroke();
-            console.log("    X line drawn."); // <<< Log X line drawn
         }
 
         // Draw Y snap line (horizontal) if Y was snapped
         if (currentSnapDetails.snappedYTo !== -1) {
-            console.log("  Attempting to draw Y snap line to speaker index:", currentSnapDetails.snappedYTo); // <<< Log Y snap attempt
             const snapTargetSpeaker = speakers[currentSnapDetails.snappedYTo];
-            const targetYpx = metersToPixelsCoords(draggedSpeaker.x, snapTargetSpeaker.y).y;
-            console.log("    Target Y Px:", targetYpx); // <<< Log target Y coord
+            // Get the pixel coordinates of the target speaker
+            const snapTargetSpeakerPx = metersToPixelsCoords(snapTargetSpeaker.x, snapTargetSpeaker.y);
+
             ctx.beginPath();
-            ctx.moveTo(draggedPosPx.x, draggedPosPx.y);
-            ctx.lineTo(draggedPosPx.x, targetYpx);
+            ctx.moveTo(draggedPosPx.x, draggedPosPx.y); // Start at dragged speaker center
+            // Line goes horizontally to the target speaker's X level
+            ctx.lineTo(snapTargetSpeakerPx.x, draggedPosPx.y);
             ctx.stroke();
-            console.log("    Y line drawn."); // <<< Log Y line drawn
         }
 
         ctx.restore(); // Restore context state (solid lines, default color)
-    } else {
-        console.log("drawSnapLines: Conditions NOT met."); // <<< Log condition not met
     }
 }
 
@@ -486,14 +478,12 @@ function drawAdjacentSpeakerAngles() {
 
 // --- Draw Measurement Function ---
 function drawMeasurement() {
-    if (!isMeasuring || !measureStart) {
-        return; // Exit if not measuring or start not set
-    }
+    if (!isMeasuring && !measureEnd) return; // Don't draw if not measuring and no final measurement exists
 
     // Determine the end point to draw to (either fixed or current mouse pos)
     const endPointToDraw = measureEnd ? measureEnd : currentMeasureEnd;
 
-    console.log(`drawMeasurement state: isMeasuring=${isMeasuring}, start=${!!measureStart}, end=${!!measureEnd}, currentEnd=${!!currentMeasureEnd}, endPointToDraw=${!!endPointToDraw}`); // DEBUG
+    //console.log(`drawMeasurement state: isMeasuring=${isMeasuring}, start=${!!measureStart}, end=${!!measureEnd}, currentEnd=${!!currentMeasureEnd}, endPointToDraw=${!!endPointToDraw}`); // DEBUG
 
     // Draw start point
     const startPx = metersToPixelsCoords(measureStart.x_met, measureStart.y_met); // FIX: Use x_met, y_met
@@ -955,7 +945,7 @@ canvas.addEventListener('mousemove', (event) => {
         const endPointPx = { x: x_px, y: y_px };
         const snappedEnd = getSnappedMeasurementPoint(endPointPx.x, endPointPx.y);
         currentMeasureEnd = snappedEnd.meters; // Update the temporary end point { x_met, y_met }
-        console.log("mousemove updated currentMeasureEnd:", currentMeasureEnd); // DEBUG
+        //console.log("mousemove updated currentMeasureEnd:", currentMeasureEnd); // DEBUG
         redraw();
     }
 
@@ -978,7 +968,7 @@ canvas.addEventListener('mousemove', (event) => {
         let clampedY = Math.max(0, Math.min(room.depth, y_met));
         // Snap to other speakers at the same Z-level, passing the index to avoid self-snapping
         const snapResult = getSnappedSpeakerPosition(clampedX, clampedY, speakers[draggedSpeakerIndex].z, draggedSpeakerIndex);
-        console.log("MouseMove Snap Result:", JSON.stringify(snapResult)); // <<< Log snap details
+        //console.log("MouseMove Snap Result:", JSON.stringify(snapResult)); // <<< Log snap details
 
         // Update speaker position
         speakers[draggedSpeakerIndex].x = snapResult.x;
@@ -987,7 +977,7 @@ canvas.addEventListener('mousemove', (event) => {
         speakers[draggedSpeakerIndex].isSnapped = snapResult.snapped;
         // Store detailed snap info for drawing lines
         currentSnapDetails = snapResult;
-        console.log("Stored currentSnapDetails:", JSON.stringify(currentSnapDetails)); // <<< Log stored details
+        //console.log("Stored currentSnapDetails:", JSON.stringify(currentSnapDetails)); // <<< Log stored details
 
         redraw(); // Redraw continuously while dragging speaker
     } else {
