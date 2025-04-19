@@ -193,7 +193,6 @@ function drawSnapLines() {
 }
 
 function redraw() {
-  console.log("Redrawing!");
   // Update state from inputs
   const prevRoomWidth = state.room.width;
   const prevRoomDepth = state.room.depth;

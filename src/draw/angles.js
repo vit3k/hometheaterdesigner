@@ -1,6 +1,6 @@
 import { state, LISTENER_EAR_HEIGHT } from "../state.js";
 import { ctx, metersToPixelsCoords } from "./draw.js";
-import { radiansToDegrees, angleDifference } from "../math.js";
+import { radiansToDegrees, angleDifference, degreesToRadians } from "../math.js";
 
 const ADJACENT_ANGLE_ARC_RADIUS_PX_BED = 100; // Arc radius for bed speakers (Increased)
 const ADJACENT_ANGLE_ARC_RADIUS_PX_CEILING = 60; // Arc radius for ceiling speakers (Increased)
@@ -187,7 +187,6 @@ function drawAdjacentSpeakerAngles() {
     }
   };
 
-  console.log("Bed speakers count:", bedSpeakers.length, bedSpeakers);
   if (bedSpeakers.length < 2) {
     console.warn("Not enough bed speakers to draw arcs!");
   }
