@@ -131,12 +131,24 @@ function setup() {
                 const currentClickMeters = snappedPoint.meters; // Use snapped meter coordinates
 
                 if (!state.isMeasuring) {
-                    // If not currently measuring, this click STARTS a new measurement.
-                    // This covers the very first click AND the third click (starting anew).
+                    // Only start a new measurement if there is no completed measurement visible
+                    if (state.measureStart && state.measureEnd) {
+                        // There is a completed measurement, so clear it first
+                        state.measureStart = null;
+                        state.measureEnd = null;
+                        state.currentMeasureEnd = null;
+                        state.measureSnapAxes = [];
+                        // Start new measurement immediately after clearing
+                    }
+                    // No completed measurement: start a new measurement
                     state.measureStart = currentClickMeters; // Use snapped coords
-                    state.measureEnd = null;
-                    state.currentMeasureEnd = null;
                     state.isMeasuring = true; // Start measuring phase
+                    // --- Set measureSnapAxes for snapping lines on the first click ---
+                    if (state.measureSnapAxes && state.measureSnapAxes.length > 0) {
+                        // Already set by getSnappedMeasurementPoint
+                    } else {
+                        state.measureSnapAxes = [];
+                    }
                     console.log(
                         "Measure start point set / New measurement started:",
                         state.measureStart,
@@ -147,6 +159,11 @@ function setup() {
                     state.currentMeasureEnd = null; // Clear dynamic endpoint
                     state.isMeasuring = false; // End measuring phase
                     console.log("Measure end point set:", state.measureEnd);
+
+                    // --- Do not clear previous measurement here ---
+                    // The previous measurement will remain until the user starts a new one
+                    // (state.measureStart and state.measureEnd will be cleared on the next measurement start)
+
                 }
                 redraw();
                 return; // Prevent starting drag actions while measuring
@@ -199,10 +216,17 @@ function setup() {
 
             // --- Measurement Update ---
             if (state.isMeasuring && state.measureStart) {
+                // Normal measurement update (dragging out endpoint)
                 const endPointPx = { x: x_px, y: y_px };
                 const snappedEnd = getSnappedMeasurementPoint(endPointPx.x, endPointPx.y);
                 state.currentMeasureEnd = snappedEnd.meters; // Update the temporary end point { x_met, y_met }
-                //console.log("mousemove updated currentMeasureEnd:", currentMeasureEnd); // DEBUG
+                redraw();
+            } else if (measureBtn.classList.contains("active-tool") && !state.isMeasuring) {
+                // Measurement tool is active, but not currently measuring (either before first measurement or after previous measurement ended)
+                // Always show preview for potential next measurement start, regardless of state.measureStart
+                const snappedStart = getSnappedMeasurementPoint(x_px, y_px);
+                // getSnappedMeasurementPoint already updates state.measureSnapAxes
+                state.currentMeasureEnd = snappedStart.meters; // Use this as a preview point
                 redraw();
             }
 
