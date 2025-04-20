@@ -10,7 +10,7 @@ const toolCursors = {
     measure: "crosshair",
 };
 
-function setActiveTool(buttonToActivate) {
+function setActiveTool(buttonToActivate: HTMLButtonElement | null) {
     // Removed 'activate' parameter
     // Determine tool name early, handle null case
     const toolName = buttonToActivate ? buttonToActivate.dataset.tool : null;
@@ -41,7 +41,11 @@ function setActiveTool(buttonToActivate) {
     if (buttonToActivate) {
         // const toolName = buttonToActivate.dataset.tool; // Already determined above
         buttonToActivate.classList.add("active-tool");
-        canvas.style.cursor = toolCursors[toolName] || "default";
+        // Set cursor based on tool type, ensure toolName is valid key
+        const cursorStyle = toolName && toolName in toolCursors
+            ? toolCursors[toolName as keyof typeof toolCursors] // Assert toolName is a key
+            : "default";
+        canvas.style.cursor = cursorStyle;
 
         // Set internal state for the activated tool
         if (toolName === "bed" || toolName === "ceiling") {
@@ -66,20 +70,20 @@ function setActiveTool(buttonToActivate) {
 
 function setup() {
     // Add event listeners to buttons
-    addSpeakerBtn.addEventListener("click", () => {
-        const isCurrentlyActive = addSpeakerBtn.classList.contains("active-tool");
+    addSpeakerBtn?.addEventListener("click", () => {
+        const isCurrentlyActive = addSpeakerBtn?.classList.contains("active-tool");
         setActiveTool(isCurrentlyActive ? null : addSpeakerBtn);
     });
-    addCeilingSpeakerBtn.addEventListener("click", () => {
+    addCeilingSpeakerBtn?.addEventListener("click", () => {
         const isCurrentlyActive =
-            addCeilingSpeakerBtn.classList.contains("active-tool");
+            addCeilingSpeakerBtn?.classList.contains("active-tool");
         setActiveTool(isCurrentlyActive ? null : addCeilingSpeakerBtn);
     });
 
     // Attach clearSpeakers event to button
-    clearSpeakersBtn.addEventListener("click", clearSpeakers);
-    measureBtn.addEventListener("click", () => {
-        const isCurrentlyActive = measureBtn.classList.contains("active-tool");
+    clearSpeakersBtn?.addEventListener("click", clearSpeakers);
+    measureBtn?.addEventListener("click", () => {
+        const isCurrentlyActive = measureBtn?.classList.contains("active-tool");
         setActiveTool(isCurrentlyActive ? null : measureBtn);
     });
 }

@@ -1,9 +1,9 @@
-import { calculateScaleAndResizeCanvas, canvas, LISTENER_RADIUS_PX, metersToPixelsCoords, pixelsToMetersCoords, redraw, SPEAKER_RADIUS_PX, updateListenerPositionInfo } from "./draw/draw";
-import { listenerXInput, listenerYInput, loadDesignBtn, loadFileInput, measureBtn, roomDepthInput, roomHeightInput, roomWidthInput, saveDesignBtn, tvSizeInput, tvXInput } from "./elements.js";
-import { getSnappedSpeakerPosition, updateSpeakerList, addSpeaker } from "./speakers.js";
-import { loadAutosavedState, loadDesign, saveDesign, state } from "./state.js";
-import { getSnappedMeasurementPoint} from "./draw/measurement.js";
-import * as tools from "./tools.js";
+import { calculateScaleAndResizeCanvas, canvas, LISTENER_RADIUS_PX, metersToPixelsCoords, pixelsToMetersCoords, redraw, SPEAKER_RADIUS_PX, updateListenerPositionInfo, ctx } from "~/draw/draw";
+import { listenerXInput, listenerYInput, loadDesignBtn, loadFileInput, measureBtn, roomDepthInput, roomHeightInput, roomWidthInput, saveDesignBtn, tvSizeInput, tvXInput } from "~/elements";
+import { getSnappedSpeakerPosition, updateSpeakerList, addSpeaker } from "~/speakers";
+import { loadAutosavedState, loadDesign, saveDesign, state } from "~/state";
+import { getSnappedMeasurementPoint} from "~/draw/measurement";
+import * as tools from "~/tools";
 
 // Function to update input fields from the current state
 function updateInputsFromState() {
@@ -46,7 +46,9 @@ function setup() {
         updateInputsFromState(); // <--- ADDED CALL HERE
 
         // 4. Perform initial UI setup and redraw AFTER state is determined and inputs synced
-        calculateScaleAndResizeCanvas();
+        if (ctx) {
+          calculateScaleAndResizeCanvas(ctx);
+        }
         updateListenerPositionInfo();
         updateCanvasCursor(); // Initial cursor state based on final initial state
         updateSpeakerList(); // Ensure speaker list UI is updated if state was loaded
@@ -67,8 +69,10 @@ function setup() {
         });
         // Redraw on window resize
         window.addEventListener("resize", () => {
-            calculateScaleAndResizeCanvas(); // Recalculate scale first
-            redraw();
+          if (ctx) {
+            calculateScaleAndResizeCanvas(ctx); // Recalculate scale first
+          }
+          redraw();
         });
 
         // --- Event Listeners ---
@@ -115,7 +119,7 @@ function setup() {
                     y_met >= 0 &&
                     y_met <= state.room.depth
                 ) {
-                    addSpeaker(x_met, y_met, state.speakerTypeToPlace); // addSpeaker now handles snapping
+                    addSpeaker(x_met, y_met, state.speakerTypeToPlace ?? undefined); // Handle null type by passing undefined (uses default)
                 } else {
                     // console.log("Clicked outside room bounds during placement or invalid coords."); // Optional log
                 }
@@ -124,7 +128,7 @@ function setup() {
 
             // --- Measurement Logic --- Detect if tool button is active first
             // else if (isMeasuring) { // OLD CHECK
-            else if (measureBtn.classList.contains("active-tool")) {
+            else if (measureBtn?.classList.contains("active-tool")) {
                 // Check if the tool button is active
                 // Get the *snapped* point based on the raw click coordinates
                 const snappedPoint = getSnappedMeasurementPoint(x_px, y_px);
@@ -187,7 +191,7 @@ function setup() {
                 let foundSpeaker = false;
                 for (let i = 0; i < state.speakers.length; i++) {
                     const spk = state.speakers[i];
-                    const spkPosPx = metersToPixelsCoords(spk.x, spk.y);
+                    const spkPosPx = metersToPixelsCoords(spk?.x ?? 0, spk?.y ?? 0);
                     const distToSpeakerPx = Math.sqrt(
                         (x_px - spkPosPx.x) ** 2 + (y_px - spkPosPx.y) ** 2,
                     );
@@ -221,7 +225,7 @@ function setup() {
                 const snappedEnd = getSnappedMeasurementPoint(endPointPx.x, endPointPx.y);
                 state.currentMeasureEnd = snappedEnd.meters; // Update the temporary end point { x_met, y_met }
                 redraw();
-            } else if (measureBtn.classList.contains("active-tool") && !state.isMeasuring) {
+            } else if (measureBtn?.classList.contains("active-tool") && !state.isMeasuring) {
                 // Measurement tool is active, but not currently measuring (either before first measurement or after previous measurement ended)
                 // Always show preview for potential next measurement start, regardless of state.measureStart
                 const snappedStart = getSnappedMeasurementPoint(x_px, y_px);
@@ -248,6 +252,19 @@ function setup() {
                 redraw(); // Redraw continuously while dragging listener
             } else if (state.isDraggingSpeaker && state.draggedSpeakerIndex !== -1) {
                 canvas.style.cursor = "grabbing";
+                // Retrieve the speaker first
+                const draggedSpeaker = state.speakers[state.draggedSpeakerIndex];
+
+                // Check if the speaker exists
+                if (!draggedSpeaker) {
+                    console.error("Error: Trying to drag a non-existent speaker at index", state.draggedSpeakerIndex);
+                    // Optionally reset dragging state
+                    state.isDraggingSpeaker = false;
+                    state.draggedSpeakerIndex = -1;
+                    canvas.style.cursor = "default";
+                    return; // Stop further processing
+                }
+
                 // Dragging a speaker
                 // Clamp speaker position to room boundaries (pre-snap)
                 const { x_met, y_met } = pixelsToMetersCoords(
@@ -260,16 +277,16 @@ function setup() {
                 const snapResult = getSnappedSpeakerPosition(
                     clampedX,
                     clampedY,
-                    state.speakers[state.draggedSpeakerIndex].z,
+                    draggedSpeaker.z ?? 0, // Use the variable, handle undefined z
                     state.draggedSpeakerIndex,
                 );
                 //console.log("MouseMove Snap Result:", JSON.stringify(snapResult)); // <<< Log snap details
 
-                // Update speaker position
-                state.speakers[state.draggedSpeakerIndex].x = snapResult.x;
-                state.speakers[state.draggedSpeakerIndex].y = snapResult.y;
+                // Update speaker position using the variable
+                draggedSpeaker.x = snapResult.x;
+                draggedSpeaker.y = snapResult.y;
                 // Update visual snap flag for highlighting the speaker itself
-                state.speakers[state.draggedSpeakerIndex].isSnapped = snapResult.snapped;
+                draggedSpeaker.isSnapped = snapResult.snapped;
                 // Store detailed snap info for drawing lines
                 state.currentSnapDetails = snapResult;
                 //console.log("Stored currentSnapDetails:", JSON.stringify(currentSnapDetails)); // <<< Log stored details
@@ -278,7 +295,7 @@ function setup() {
             } else {
                 // Only update cursor if NOT dragging anything
                 // PRIORITIZE measurement cursor
-                if (measureBtn.classList.contains("active-tool")) {
+                if (measureBtn?.classList.contains("active-tool")) {
                     canvas.style.cursor = "crosshair";
                 } else {
                     // Check if over listener
@@ -292,7 +309,7 @@ function setup() {
                     if (!overObject) {
                         for (let i = 0; i < state.speakers.length; i++) {
                             const spk = state.speakers[i];
-                            const spkPosPx = metersToPixelsCoords(spk.x, spk.y);
+                            const spkPosPx = metersToPixelsCoords(spk?.x ?? 0, spk?.y ?? 0);
                             const distToSpeakerPx = Math.sqrt(
                                 (x_px - spkPosPx.x) ** 2 + (y_px - spkPosPx.y) ** 2,
                             );
@@ -314,7 +331,7 @@ function setup() {
             }
         });
 
-        canvas.addEventListener("mouseup", (event) => {
+        canvas.addEventListener("mouseup", () => {
             // Always reset all drag flags
             let wasDragging = state.isDragging || state.isDraggingListener || state.isDraggingSpeaker;
             state.isDraggingListener = false;
@@ -359,8 +376,8 @@ function setup() {
         });
 
         // Save/Load Button Listeners
-        saveDesignBtn.addEventListener("click", saveDesign);
-        loadDesignBtn.addEventListener("click", () => loadFileInput.click()); // Trigger hidden input
+        saveDesignBtn?.addEventListener("click", saveDesign);
+        loadDesignBtn?.addEventListener("click", () => loadFileInput.click()); // Trigger hidden input
         loadFileInput.addEventListener("change", loadDesign);
         tools.setup();
     });
@@ -368,7 +385,7 @@ function setup() {
 function updateCanvasCursor() {
     if (state.isDraggingListener || state.isDraggingSpeaker) { // Updated to include speaker drag
         canvas.style.cursor = "grabbing";
-    } else if (state.isMeasuring || state.isPlacingSpeaker || measureBtn.classList.contains("active-tool")) { // Added check for active measure tool
+    } else if (state.isMeasuring || state.isPlacingSpeaker || measureBtn?.classList.contains("active-tool")) { // Added check for active measure tool
         canvas.style.cursor = "crosshair";
     } else {
         // Inactive tool state - could potentially check hover here too for 'grab',

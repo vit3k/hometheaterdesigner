@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    /* Base Options: */
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "target": "es2016",
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "isolatedModules": true,
+
+    /* Strictness */
+    "strict": true,
+    "noUncheckedIndexedAccess": true, // Recommended for stricter checks even if strict: false
+
+    /* If NOT transpiling with ts */
+    "module": "preserve",
+    "noEmit": true, // Set to false if you want TS to output JS files
+
+    /* If your code runs in the DOM: */
+    "lib": ["es2016", "dom", "dom.iterable"],
+
+    /* If you're building a library: */
+    // "declaration": true,
+
+    /* If you're using path aliases: */
+    "baseUrl": ".",
+    "paths": {
+      "~/*": ["./src/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"], // Include all TS/TSX files
+  "exclude": ["node_modules"]         // Exclude node_modules
+}

@@ -1,6 +1,6 @@
-import { state, LISTENER_EAR_HEIGHT } from "../state.js";
-import { ctx, metersToPixelsCoords } from "./draw.js";
-import { radiansToDegrees, angleDifference, degreesToRadians } from "../math.js";
+import { state, LISTENER_EAR_HEIGHT, Speaker } from "~/state";
+import { metersToPixelsCoords } from "~/draw/draw";
+import { radiansToDegrees, angleDifference, degreesToRadians } from "~/math";
 
 const ADJACENT_ANGLE_ARC_RADIUS_PX_BED = 100; // Arc radius for bed speakers (Increased)
 const ADJACENT_ANGLE_ARC_RADIUS_PX_CEILING = 60; // Arc radius for ceiling speakers (Increased)
@@ -15,7 +15,7 @@ const ANGLE_FONT_SIZE = 14; // Increased font size for angles
 const ANGLE_FONT_SIZE_PX = 14; // Increased font size for angles
 const ANGLE_LINE_WIDTH = 2; // Thicker angle lines
 
-function drawAngles() {
+function drawAngles(ctx: CanvasRenderingContext2D) {
   const listenerPos = metersToPixelsCoords(state.listener.x, state.listener.y);
   const listenerZ = LISTENER_EAR_HEIGHT; // Use constant for listener height
 
@@ -30,7 +30,7 @@ function drawAngles() {
     // Calculate vector from listener to speaker in meters
     const dx_met = speaker.x - state.listener.x;
     const dy_met = speaker.y - state.listener.y; // Y increases towards the back wall
-    const dz_met = speakerZ - listenerZ;
+    const dz_met = (speakerZ ?? 0) - listenerZ;
 
     // Calculate horizontal distance in meters
     const d_horiz_met = Math.sqrt(dx_met * dx_met + dy_met * dy_met);
@@ -105,14 +105,14 @@ function drawAngles() {
   });
 }
 
-function drawAdjacentSpeakerAngles() {
+function drawAdjacentSpeakerAngles(ctx: CanvasRenderingContext2D) {
   const listenerPos = metersToPixelsCoords(state.listener.x, state.listener.y);
 
-  const calculateAzimuth = (spk) => {
+  const calculateAzimuth = (spk: Speaker) => {
     const dx_met = spk.x - state.listener.x;
     const dy_met = spk.y - state.listener.y;
     return radiansToDegrees(Math.atan2(dx_met, -dy_met)); // Clockwise from North
-  }; 
+  };
 
   const speakersWithAzimuth = state.speakers.map((spk) => ({
     ...spk,
@@ -127,7 +127,9 @@ function drawAdjacentSpeakerAngles() {
     .filter((spk) => spk.type === "ceiling")
     .sort((a, b) => a.azimuth - b.azimuth);
 
-  const drawAnglesForList = (list, type) => {
+  type SpeakerWithAzimuth = Speaker & { azimuth: number; dist: number; };
+
+  const drawAnglesForList = (list: SpeakerWithAzimuth[], type: 'bed' | 'ceiling') => {
     if (list.length < 2) return;
 
     const arcRadiusPx =
@@ -145,15 +147,15 @@ function drawAdjacentSpeakerAngles() {
       const nextSpeaker = list[(i + 1) % list.length]; // Use modulo to wrap around
 
       const angleBetween = angleDifference(
-        currentSpeaker.azimuth,
-        nextSpeaker.azimuth,
+        currentSpeaker!.azimuth,
+        nextSpeaker!.azimuth,
       );
 
       // Convert *our* azimuth (clockwise from North) to canvas angle (anti-clockwise from East)
       // atan2(y, x) gives angle relative to positive x-axis (East), counter-clockwise
       // We need y = speakerY_px - listenerY_px, x = speakerX_px - listenerX_px
-      const pos1 = metersToPixelsCoords(currentSpeaker.x, currentSpeaker.y);
-      const pos2 = metersToPixelsCoords(nextSpeaker.x, nextSpeaker.y);
+      const pos1 = metersToPixelsCoords(currentSpeaker!.x, currentSpeaker!.y);
+      const pos2 = metersToPixelsCoords(nextSpeaker!.x, nextSpeaker!.y);
       let angle1 = Math.atan2(pos1.y - listenerPos.y, pos1.x - listenerPos.x);
       let angle2 = Math.atan2(pos2.y - listenerPos.y, pos2.x - listenerPos.x);
 

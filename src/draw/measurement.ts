@@ -1,6 +1,7 @@
-import { state } from "../state.js";
-import { metersToPixelsCoords, ctx } from "./draw.js";
-import {pixelsToMetersCoords} from './draw.js';
+import { state, PointMeters, Speaker, SnapAxisInfo, SnappedPoint } from "../state.js";
+import { metersToPixelsCoords, pixelsToMetersCoords } from "./draw.js";
+
+
 
 // --- Measurement Constants ---
 const SNAP_THRESHOLD_MEASURE_PX = 15; // Pixel distance to snap measurement point
@@ -11,9 +12,9 @@ const MEASUREMENT_TEXT_COLOR = "red";
 const MEASUREMENT_FONT_SIZE_PX = 14;
 
 // --- Measurement Snap Function ---
-function getSnappedMeasurementPoint(x_px, y_px) {
+function getSnappedMeasurementPoint(x_px: number, y_px: number): SnappedPoint {
   // Reset snap info
-  state.measureSnapAxes = []; // Array of {type: 'vertical'|'horizontal', px: number, meters: number, source: obj}
+  state.measureSnapAxes = [] as SnapAxisInfo[];
 
   // Check snap to listener (point)
   const listenerPosPx = metersToPixelsCoords(state.listener.x, state.listener.y);
@@ -45,14 +46,16 @@ function getSnappedMeasurementPoint(x_px, y_px) {
 
   // --- Snap to axes of listener and speakers ---
   // Gather all axis candidates (listener + speakers)
-  const axisCandidates = [
+  const axisCandidates: ({ x: number; y: number } | Speaker)[] = [
     { x: state.listener.x, y: state.listener.y },
     ...state.speakers
   ];
-  let bestSnap = null;
+  let snapAxes: SnapAxisInfo[] = [];
+  let snapX: { axisPx: { x: number; y: number }; obj: { x: number; y: number } | Speaker } | null = null;
+  let snapY: { axisPx: { x: number; y: number }; obj: { x: number; y: number } | Speaker } | null = null;
+  let bestSnap: { axisPx: { x: number; y: number }; obj: { x: number; y: number } | Speaker } | null = null;
   let minDist = SNAP_THRESHOLD_MEASURE_PX;
-  let snapAxes = [];
-  let snapX = null, snapY = null;
+
   // Try snapping to vertical or horizontal axes
   for (const obj of axisCandidates) {
     const axisPx = metersToPixelsCoords(obj.x, obj.y);
@@ -69,29 +72,30 @@ function getSnappedMeasurementPoint(x_px, y_px) {
       snapY = { axisPx, obj };
     }
   }
+
+  state.measureSnapAxes = snapAxes;
+
   if (snapX && snapY) {
     // Snap to intersection if both
     const { x_met, y_met } = pixelsToMetersCoords(snapX.axisPx.x, snapY.axisPx.y);
-    state.measureSnapAxes = snapAxes;
     return {
       meters: { x_met, y_met },
       pixels: { x: snapX.axisPx.x, y: snapY.axisPx.y }
     };
   } else if (snapX) {
     const { x_met, y_met } = pixelsToMetersCoords(snapX.axisPx.x, y_px);
-    state.measureSnapAxes = snapAxes;
     return {
       meters: { x_met, y_met },
       pixels: { x: snapX.axisPx.x, y: y_px }
     };
   } else if (snapY) {
     const { x_met, y_met } = pixelsToMetersCoords(x_px, snapY.axisPx.y);
-    state.measureSnapAxes = snapAxes;
     return {
       meters: { x_met, y_met },
       pixels: { x: x_px, y: snapY.axisPx.y }
     };
   }
+
   // No snap
   state.measureSnapAxes = [];
   const snappedMeters = pixelsToMetersCoords(x_px, y_px);
@@ -100,7 +104,7 @@ function getSnappedMeasurementPoint(x_px, y_px) {
 }
 
 // --- Draw Measurement Function ---
-function drawMeasurement() {
+function drawMeasurement(ctx: CanvasRenderingContext2D) {
     // --- Draw Completed Measurement --- (if it exists)
     if (!state.isMeasuring && state.measureStart && state.measureEnd) {
         const startPx = metersToPixelsCoords(state.measureStart.x_met, state.measureStart.y_met);
@@ -140,12 +144,12 @@ function drawMeasurement() {
     }
 
     // --- Draw Active Measurement OR Preview for Next Measurement Start ---
-    let currentEndPoint = null; // Point mouse is hovering over (snapped)
+    let currentEndPoint: PointMeters | null = null;
     if (state.currentMeasureEnd && state.currentMeasureEnd.x_met != null && state.currentMeasureEnd.y_met != null) {
          currentEndPoint = state.currentMeasureEnd;
     }
 
-    if (state.isMeasuring && state.measureStart) { // Actively measuring
+    if (state.isMeasuring && state.measureStart) { 
         const startPx = metersToPixelsCoords(state.measureStart.x_met, state.measureStart.y_met);
 
         // Draw fixed start point (only draw if actively measuring)
@@ -183,7 +187,7 @@ function drawMeasurement() {
             ctx.textBaseline = "bottom";
             ctx.fillText(`${distance.toFixed(2)} m`, midX, midY - 5);
         }
-    } else if (!state.isMeasuring && currentEndPoint) { // Previewing next measurement start
+    } else if (!state.isMeasuring && currentEndPoint) { 
         // Draw preview circle at current mouse position
         const previewStartPx = metersToPixelsCoords(currentEndPoint.x_met, currentEndPoint.y_met);
         ctx.fillStyle = 'rgba(255,0,0,0.4)';
@@ -196,10 +200,10 @@ function drawMeasurement() {
     // Assuming mousemove handler only sets measureSnapAxes when tool is active
     if (state.measureSnapAxes && state.measureSnapAxes.length > 0) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(255,0,0,0.5)'; // Red, semi-transparent
+      ctx.strokeStyle = 'rgba(255,0,0,0.5)'; 
       ctx.lineWidth = 1.5;
       ctx.setLineDash([5, 5]);
-      for (const axis of state.measureSnapAxes) {
+      for (const axis of state.measureSnapAxes) { 
         if (axis.type === 'vertical') {
           ctx.beginPath();
           ctx.moveTo(axis.px, 0);

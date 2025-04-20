@@ -1,3 +1,44 @@
+import { roomWidthInput, roomDepthInput, roomHeightInput, listenerXInput, listenerYInput, tvSizeInput } from './elements';
+import { updateSpeakerList } from './speakers'; 
+import { redraw } from '~/draw/draw'; 
+
+// Define the structure for a speaker
+export interface Speaker {
+  x: number;
+  y: number;
+  z?: number; // Height coordinate, optional for bed speakers
+  type: 'bed' | 'ceiling';
+  isSnapped?: boolean; // Optional flag used during placement/drawing
+}
+
+// Define structure for coordinate points in meters
+export interface PointMeters {
+  x_met: number;
+  y_met: number;
+}
+
+// Define structure for snapping details
+interface SnapDetails {
+  snapped: boolean;        // Was any snap occurred?
+  snappedXTo: number;      // Index of speaker snapped to on X-axis (-1 if none)
+  snappedYTo: number;      // Index of speaker snapped to on Y-axis (-1 if none)
+  x: number;               // The resulting snapped X coordinate (meters)
+  y: number;               // The resulting snapped Y coordinate (meters)
+}
+
+// --- Interfaces ---
+export interface SnapAxisInfo {
+  type: 'vertical' | 'horizontal';
+  px: number;
+  meters: number;
+  source: { x: number; y: number } | Speaker;
+}
+
+export interface SnappedPoint {
+  meters: PointMeters;
+  pixels: { x: number; y: number };
+}
+
 const LISTENER_EAR_HEIGHT = 1.2; // Assumed listener ear height in meters
 
 // --- State ---
@@ -17,24 +58,25 @@ const state = {
     width: 1.6, // Default TV width
     height: 0.9, // Default TV height
   },
-  speakers: [], // Array to hold speaker objects {x, y, type: 'bed'/'ceiling'}
+  speakers: [] as Speaker[], // Array to hold speaker objects
   isDraggingListener: false,
   isDraggingSpeaker: false,
   draggedSpeakerIndex: -1,
   offsetX: 0, // Initialize offsetX
   offsetY: 0, // Initialize offsetY
   isPlacingSpeaker: false,
-  speakerTypeToPlace: null, // 'bed' or 'ceiling'
+  speakerTypeToPlace: null as 'bed' | 'ceiling' | null, // Explicitly type this
   isMeasuring: false,
-  measureStart: null, // { x_met, y_met } in meters
-  measureEnd: null, // { x_met, y_met } in meters
-  currentMeasureEnd: null, // { x_met, y_met } temporary endpoint during mouse move
+  measureStart: null as PointMeters | null, // { x_met, y_met } in meters
+  measureEnd: null as PointMeters | null, // { x_met, y_met } in meters
+  currentMeasureEnd: null as PointMeters | null, // { x_met, y_met } temporary endpoint during mouse move
+  measureSnapAxes: [] as SnapAxisInfo[], // Axes the measurement start/end point snapped to ('x' or 'y')
+  currentSnapDetails: null as SnapDetails | null, // Holds details about the last speaker snap event
   isDragging: false, // General dragging flag (could be listener or future elements)
   dragOffsetX: 0,
   dragOffsetY: 0,
   scale: 1,
-  PADDING: 50, // Initial padding
-  currentSnapDetails: null, // Stores {x, y, snapped, snappedXTo, snappedYTo} during drag
+  PADDING: 20, // Initial padding
 };
 
 // --- Save/Load Functions ---
@@ -42,10 +84,10 @@ const state = {
 function saveDesign() {
   const designData = {
     version: 1, // Add a version number for future compatibility
-    room: room,
-    listener: listener,
-    tv: tv,
-    speakers: speakers,
+    room: state.room,
+    listener: state.listener,
+    tv: state.tv,
+    speakers: state.speakers,
   };
 
   const jsonString = JSON.stringify(designData, null, 2); // Pretty print JSON
@@ -62,8 +104,15 @@ function saveDesign() {
   console.log("Design saved.");
 }
 
-function loadDesign(event) {
-  const file = event.target.files[0];
+function loadDesign(event: Event) {
+  // Assert target is an HTMLInputElement and check it exists
+  const inputElement = event.target as HTMLInputElement;
+  if (!inputElement || !inputElement.files || inputElement.files.length === 0) {
+    console.error("Load design event target is not a file input or has no files.");
+    return;
+  }
+
+  const file = inputElement.files[0]; // Use the asserted element
   if (!file) {
     return;
   }
@@ -71,7 +120,7 @@ function loadDesign(event) {
   const reader = new FileReader();
   reader.onload = function (e) {
     try {
-      const loadedData = JSON.parse(e.target.result);
+      const loadedData = JSON.parse(e.target?.result as string);
 
       // Basic validation
       if (
@@ -82,24 +131,24 @@ function loadDesign(event) {
         loadedData.speakers
       ) {
         // Update state
-        room = loadedData.room;
-        listener = loadedData.listener;
-        tv.width = loadedData.tv.width; // Restore TV width
-        speakers = loadedData.speakers;
+        state.room = loadedData.room;
+        state.listener = loadedData.listener;
+        state.tv.width = loadedData.tv.width; // Restore TV width
+        state.speakers = loadedData.speakers;
 
         // Update input controls (excluding tv.x and tv.y inputs)
-        roomWidthInput.value = room.width;
-        roomDepthInput.value = room.depth;
-        roomHeightInput.value = room.height;
-        listenerXInput.value = listener.x;
-        listenerYInput.value = listener.y;
+        roomWidthInput.value = state.room.width.toString();
+        roomDepthInput.value = state.room.depth.toString();
+        roomHeightInput.value = state.room.height.toString();
+        listenerXInput.value = state.listener.x.toString();
+        listenerYInput.value = state.listener.y.toString();
         // tvXInput.value = tv.x; // Don't set directly, redraw will handle
         // tvYInput.value = tv.y; // Don't set directly, redraw will handle
-        tvSizeInput.value = tv.width;
+        tvSizeInput.value = state.tv.width.toString();
 
         // Refresh UI
         updateSpeakerList();
-        redraw(); // redraw() will correctly set tv.x and tv.y based on loaded listener.x
+        redraw(); // redraw() might cause runtime error if not defined globally or elsewhere
         console.log("Design loaded successfully.");
       } else {
         alert("Invalid design file format.");
@@ -115,7 +164,7 @@ function loadDesign(event) {
   reader.readAsText(file);
 
   // Reset file input value so the same file can trigger 'change' again
-  event.target.value = null;
+  inputElement.value = ""; // Reset with empty string, use asserted element
 }
 
 // Add the constant definition
@@ -129,7 +178,7 @@ const AUTOSAVE_KEY = "homeTheaterDesignAutosave";
 // For now, assuming they exist globally for the initial setup, which is not ideal.
 // A better approach would be an init function:
 
-function initState(roomWidth, roomDepth, roomHeight) {
+function initState(roomWidth: string, roomDepth: string, roomHeight: string) {
   state.room.width = parseFloat(roomWidth);
   state.room.depth = parseFloat(roomDepth);
   state.room.height = parseFloat(roomHeight);
@@ -171,9 +220,7 @@ function loadAutosavedState() {
         // Restore state variables by updating the properties of the existing state object
         state.room = savedState.room;
         state.listener = savedState.listener;
-        // Ensure tv object exists before assigning width
-        if (!state.tv) state.tv = {};
-        state.tv.width = savedState.tv.width;
+        state.tv = savedState.tv; // Assign the validated tv object from saved state
         state.speakers = savedState.speakers;
 
         // --- Removed UI Update Logic ---

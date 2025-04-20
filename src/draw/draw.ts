@@ -1,11 +1,16 @@
-import {state, autosaveState} from "../state.js";
+import {state, autosaveState} from "../state";
 import { roomDepthInput, roomWidthInput, roomHeightInput, listenerXInput, listenerYInput, tvXInput, tvYInput, tvSizeInput, measureBtn } from "../elements";
-import { drawAdjacentSpeakerAngles, drawAngles } from "./angles.js";
-import { drawMeasurement } from './measurement.js';
-import {distFrontSpan, distBackSpan} from '../elements.js';
+import { drawAdjacentSpeakerAngles, drawAngles } from "./angles";
+import { drawMeasurement } from './measurement';
+import {distFrontSpan, distBackSpan} from '../elements';
 
-const canvas = document.getElementById('room-canvas');
-const ctx = canvas.getContext('2d');
+const canvas = document.getElementById('room-canvas') as HTMLCanvasElement;
+const ctx_module_level = canvas.getContext('2d'); // Rename to avoid conflict later
+
+// Check if context was successfully obtained
+if (!ctx_module_level) {
+  throw new Error("Could not get 2D rendering context for canvas.");
+}
 
 // --- Drawing Constants ---
 
@@ -19,7 +24,7 @@ const TV_LINE_WIDTH = 5; // Increased TV line width (used for rect height)
 
 // --- Coordinate Conversion ---
 // Convert room coordinates (meters) to canvas coordinates (pixels)
-function metersToPixelsCoords(x_met, y_met) {
+function metersToPixelsCoords(x_met: number, y_met: number) {
   // Maps room Y=0 (front/TV wall) to pixel Y=PADDING (top edge of drawing area)
   // Maps room Y=room.depth (back wall) to pixel Y=canvas.height-PADDING (bottom edge)
   const x_px = x_met * state.scale + state.PADDING;
@@ -28,14 +33,14 @@ function metersToPixelsCoords(x_met, y_met) {
 }
 
 // Convert canvas coordinates (pixels) back to room coordinates (meters)
-function pixelsToMetersCoords(x_px, y_px) {
+function pixelsToMetersCoords(x_px: number, y_px: number) {
   if (state.scale === 0) return { x_met: 0, y_met: 0 }; // Avoid division by zero
   const x_met = (x_px - state.PADDING) / state.scale;
   const y_met = (y_px - state.PADDING) / state.scale; // FIX: Inverse of the above
   return { x_met, y_met }; // FIX: Use correct property names
 }
 
-function drawRoom() {
+function drawRoom(ctx: CanvasRenderingContext2D) { // Add ctx parameter
   ctx.strokeStyle = "black";
   ctx.lineWidth = 1;
   // Use the conversion function for clarity and consistency
@@ -50,10 +55,11 @@ function drawRoom() {
   ctx.lineTo(bottomRight.x, bottomRight.y); // Right wall
   ctx.lineTo(bottomLeft.x, bottomLeft.y); // Bottom wall (Y=depth)
   ctx.lineTo(topLeft.x, topLeft.y); // Left wall
+  ctx.closePath(); // Added closePath
   ctx.stroke();
 }
 
-function drawTV() {
+function drawTV(ctx: CanvasRenderingContext2D) { // Add ctx parameter
   if (
     !state.tv ||
     isNaN(state.tv.x) ||
@@ -76,7 +82,7 @@ function drawTV() {
   );
 }
 
-function drawListener() {
+function drawListener(ctx: CanvasRenderingContext2D) { // Add ctx parameter
   if (!state.listener || isNaN(state.listener.x) || isNaN(state.listener.y))
     return;
   const listenerPos = metersToPixelsCoords(state.listener.x, state.listener.y);
@@ -103,7 +109,7 @@ function drawListener() {
   ctx.fill();
 }
 
-function drawSpeakers() {
+function drawSpeakers(ctx: CanvasRenderingContext2D) { // Add ctx parameter
   state.speakers.forEach((speaker, index) => {
     const speakerPos = metersToPixelsCoords(speaker.x, speaker.y);
     const baseColor = speaker.type === "ceiling" ? "grey" : "green";
@@ -136,7 +142,7 @@ function drawSpeakers() {
   });
 }
 
-function drawSnapLines() {
+function drawSnapLines(ctx: CanvasRenderingContext2D) { // Add ctx parameter
   // Only draw if dragging a speaker and snap details are available AND a snap occurred
   if (
     state.isDraggingSpeaker &&
@@ -145,6 +151,12 @@ function drawSnapLines() {
     state.currentSnapDetails.snapped
   ) {
     const draggedSpeaker = state.speakers[state.draggedSpeakerIndex];
+
+    if (!draggedSpeaker) {
+        console.error("Dragged speaker not found at index:", state.draggedSpeakerIndex);
+        return; // Exit if speaker is undefined
+    }
+
     const draggedPosPx = metersToPixelsCoords(
       draggedSpeaker.x,
       draggedSpeaker.y,
@@ -157,35 +169,39 @@ function drawSnapLines() {
     ctx.setLineDash([3, 3]); // Dashed line
 
     // Draw X snap line (vertical) if X was snapped
-    if (state.currentSnapDetails.snappedXTo !== -1) {
+    if (state.currentSnapDetails && state.currentSnapDetails.snappedXTo !== -1) {
       const snapTargetSpeaker = state.speakers[state.currentSnapDetails.snappedXTo];
-      // Get the pixel coordinates of the target speaker
-      const snapTargetSpeakerPx = metersToPixelsCoords(
-        snapTargetSpeaker.x,
-        snapTargetSpeaker.y,
-      );
+      // Check if the target speaker exists before using it
+      if (snapTargetSpeaker) {
+        const snapTargetSpeakerPx = metersToPixelsCoords(
+          snapTargetSpeaker.x,
+          snapTargetSpeaker.y,
+        );
 
-      ctx.beginPath();
-      ctx.moveTo(draggedPosPx.x, draggedPosPx.y); // Start at dragged speaker center
-      // Line goes vertically to the target speaker's Y level
-      ctx.lineTo(draggedPosPx.x, snapTargetSpeakerPx.y);
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(draggedPosPx.x, draggedPosPx.y); // Start at dragged speaker center
+        // Line goes vertically to the target speaker's Y level
+        ctx.lineTo(draggedPosPx.x, snapTargetSpeakerPx.y);
+        ctx.stroke();
+      }
     }
 
     // Draw Y snap line (horizontal) if Y was snapped
-    if (state.currentSnapDetails.snappedYTo !== -1) {
+    if (state.currentSnapDetails && state.currentSnapDetails.snappedYTo !== -1) {
       const snapTargetSpeaker = state.speakers[state.currentSnapDetails.snappedYTo];
-      // Get the pixel coordinates of the target speaker
-      const snapTargetSpeakerPx = metersToPixelsCoords(
-        snapTargetSpeaker.x,
-        snapTargetSpeaker.y,
-      );
+      // Check if the target speaker exists before using it
+      if (snapTargetSpeaker) {
+        const snapTargetSpeakerPx = metersToPixelsCoords(
+          snapTargetSpeaker.x,
+          snapTargetSpeaker.y,
+        );
 
-      ctx.beginPath();
-      ctx.moveTo(draggedPosPx.x, draggedPosPx.y); // Start at dragged speaker center
-      // Line goes horizontally to the target speaker's X level
-      ctx.lineTo(snapTargetSpeakerPx.x, draggedPosPx.y);
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(draggedPosPx.x, draggedPosPx.y); // Start at dragged speaker center
+        // Line goes horizontally to the target speaker's X level
+        ctx.lineTo(snapTargetSpeakerPx.x, draggedPosPx.y);
+        ctx.stroke();
+      }
     }
 
     ctx.restore(); // Restore context state (solid lines, default color)
@@ -193,6 +209,14 @@ function drawSnapLines() {
 }
 
 function redraw() {
+  // Add null check for the module-level context at the start of redraw
+  if (!ctx_module_level) {
+    console.error("Canvas context is not available in redraw.");
+    return; // Exit if context is null
+  }
+  // Now TypeScript knows ctx_module_level is safe to use
+  const ctx = ctx_module_level; // Assign the checked context
+
   // Update state from inputs
   const prevRoomWidth = state.room.width;
   const prevRoomDepth = state.room.depth;
@@ -222,34 +246,34 @@ function redraw() {
     });
   }
 
-  calculateScaleAndResizeCanvas();
+  calculateScaleAndResizeCanvas(ctx); // Pass ctx
 
   // Clear canvas
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Redraw elements
-  drawRoom();
-  drawTV();
-  drawListener();
-  drawSpeakers(); // Draw existing speakers
-  drawSnapLines(); // Draw snap lines after speakers
-  drawAngles(); // Draw angles after speakers
-  drawAdjacentSpeakerAngles(); // Draw adjacent speaker angles
-  drawMeasurement(); // Draw measurement line and text
+  // Redraw elements using the passed ctx
+  drawRoom(ctx);
+  drawTV(ctx);
+  drawListener(ctx);
+  drawSpeakers(ctx);
+  drawSnapLines(ctx);
+  drawAngles(ctx); // Pass ctx
+  drawAdjacentSpeakerAngles(ctx); // Pass ctx
+  drawMeasurement(ctx); // Draw measurement line and text
   updateListenerPositionInfo(); // Call the new function here
   autosaveState(); // Autosave after every redraw
 }
 
 // --- Functions ---
-function calculateScaleAndResizeCanvas() {
+function calculateScaleAndResizeCanvas(ctx: CanvasRenderingContext2D) { // Add ctx parameter
   const canvasContainer = document.querySelector(".canvas-container");
   // Get available dimensions of the container
-  const containerWidth = canvasContainer.clientWidth;
-  const containerHeight = canvasContainer.clientHeight; // Need container height too
+  const containerWidth = canvasContainer?.clientWidth;
+  const containerHeight = canvasContainer?.clientHeight; // Need container height too
 
   // Calculate available drawing area dimensions
-  const drawingWidth = containerWidth - 2 * state.PADDING;
-  const drawingHeight = containerHeight - 2 * state.PADDING; // Available height for drawing
+  const drawingWidth = (containerWidth ?? 0) - 2 * state.PADDING;
+  const drawingHeight = (containerHeight ?? 0) - 2 * state.PADDING; // Available height for drawing
 
   // Prevent errors if dimensions are too small or room size is zero
   if (
@@ -259,8 +283,8 @@ function calculateScaleAndResizeCanvas() {
       state.room.depth <= 0
   ) {
       state.scale = 1; // Default scale
-      canvas.width = Math.max(1, containerWidth); // Ensure minimum size
-      canvas.height = Math.max(1, containerHeight);
+      canvas.width = Math.max(1, containerWidth || 1); // Ensure minimum size
+      canvas.height = Math.max(1, containerHeight || 1);
       console.warn(
           "Cannot calculate scale properly due to zero/negative dimensions.",
       );
@@ -307,10 +331,9 @@ function updateListenerPositionInfo() {
   distBackSpan.textContent = displayDistBack.toFixed(2);
 }
 
-
 export {
   canvas,
-  ctx,
+  ctx_module_level as ctx,
   redraw,
   calculateScaleAndResizeCanvas,
   metersToPixelsCoords,
